@@ -246,12 +246,39 @@ def option_scores(model, batch: list[Example], pad_id: int, head_fp32=None, poin
     return [logp[i, e.cands] + z[i] for i, e in enumerate(batch)]
 
 
-def batch_loss(model, batch: list[Example], pad_id: int, head_fp32=None, pointer=None):
+LOSSES = ("log", "brier", "acerto", "acerto_brier")
+
+
+def option_loss(lp_opt, q, kind: str = "log"):
+    """Perda de UM exemplo a partir dos log-probs renormalizados entre as opções (`lp_opt`) e do alvo `q`.
+
+    H4 (a forma da recompensa muda a calibração?). Cada perda é menos uma recompensa:
+    - `log`: -sum q·log p. Log score, regra própria e ilimitada. É a perda original do A1.
+    - `brier`: sum (p - q)². Brier, regra própria e limitada (é o termo de calibração do Clef e do RLCR).
+    - `acerto`: -sum q·p. Acerto esperado ao sortear a opção pela própria distribuição (estilo RLVR).
+      É linear em p, logo NÃO é própria: o ótimo põe toda a massa numa opção (superconfiança).
+    - `acerto_brier`: acerto + Brier, como a recompensa do RLCR (arXiv:2507.16806).
+    Com alvo suave (`gold_dist`), q é a distribuição de referência; com alvo duro, o one-hot do gabarito.
+    """
+    if kind == "log":
+        return -(q * lp_opt).sum()
+    p = lp_opt.exp()
+    if kind == "brier":
+        return ((p - q) ** 2).sum()
+    if kind == "acerto":
+        return -(q * p).sum()
+    if kind == "acerto_brier":
+        return -(q * p).sum() + ((p - q) ** 2).sum()
+    raise ValueError(f"perda desconhecida: {kind} (opções: {', '.join(LOSSES)})")
+
+
+def batch_loss(model, batch: list[Example], pad_id: int, head_fp32=None, pointer=None, loss: str = "log"):
     """(soma das perdas, acertos, massa média das letras no vocabulário).
 
     Perda = entropia cruzada entre o alvo e a distribuição RENORMALIZADA entre as opções apresentadas
     (o mesmo objeto que a avaliação usa e que a pointer head do E4 produz). A massa das letras no vocabulário
-    inteiro só é registrada (com a pointer head é 1 por construção).
+    inteiro só é registrada (com a pointer head é 1 por construção). `loss` escolhe a perda da H4
+    (`option_loss`); o padrão `log` reproduz o A1.
     """
     import torch
 
@@ -262,7 +289,7 @@ def batch_loss(model, batch: list[Example], pad_id: int, head_fp32=None, pointer
             lp = torch.log_softmax(lp, dim=0)
         lp_opt = lp - torch.logsumexp(lp, dim=0)
         q = torch.tensor(e.target, device=lp.device, dtype=lp.dtype)
-        losses.append(-(q * lp_opt).sum())
+        losses.append(option_loss(lp_opt, q, loss))
         hits += int(int(lp.argmax()) == e.gold_pos)
         mass += float(lp.detach().exp().sum())
     return torch.stack(losses).sum(), hits, mass / len(batch)
@@ -317,6 +344,7 @@ class TrainConfig:
     epoch_offset: int = 0    # F2.3a: desloca as ordens/planos (época 0 daqui = época `epoch_offset` do E3)
     frozen_targets: list = field(default_factory=list)  # F2.2: alvos cujo LoRA nasce (B = 0) e fica CONGELADO
     source_caps: list = field(default_factory=list)  # F3: teto por família de uma fonte, ex.: felhen=650,f3=1625
+    loss: str = "log"  # H4: log (A1) | brier | acerto | acerto_brier (ver `option_loss`)
 
 
 class _Stop:
@@ -414,6 +442,8 @@ def train(cfg: TrainConfig, out: Path, resume: bool = True, *, model=None, tok=N
     pad_id = tok.pad_token_id if tok.pad_token_id is not None else 0
     _, W = body_and_head(model)
     head32 = W.detach().float()
+    if cfg.loss not in LOSSES:
+        raise ValueError(f"perda desconhecida: {cfg.loss} (opções: {', '.join(LOSSES)})")
     if cfg.readout not in ("letras", "ponteiro", "residual"):
         raise ValueError(f"readout desconhecido: {cfg.readout}")
     if cfg.init_adapter:  # F2.3a: continua um LoRA já treinado (o otimizador e o cronograma recomeçam)
@@ -530,7 +560,7 @@ def train(cfg: TrainConfig, out: Path, resume: bool = True, *, model=None, tok=N
             n_ex = sum(len(b) for b in micro)
             loss_t, hits_t, mass_t = 0.0, 0, 0.0
             for b in micro:
-                loss_sum, hits, mass = batch_loss(model, b, pad_id, head32, pointer)
+                loss_sum, hits, mass = batch_loss(model, b, pad_id, head32, pointer, loss=cfg.loss)
                 (loss_sum / n_ex).backward()  # média sobre o lote EFETIVO desta atualização
                 loss_t, hits_t, mass_t = loss_t + float(loss_sum.detach()), hits_t + hits, mass_t + mass * len(b)
                 toks += sum(len(e.ids) for e in b)
