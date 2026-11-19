@@ -54,5 +54,10 @@ for src in felhen telepatia traces; do
   lumi_exec lumi-eval calibrar --calib "${OUT}_${src}_calib" --alvo "${OUT}_${src}_dev" --risco 0.10 \
     || echo ">> calibração de $src falhou"
 done
-lumi_exec lumi-eval h2 --base "${E1}_felhen_dev_${SUF},${E1}_telepatia_dev_${SUF},${E1}_traces_dev_${SUF}" \
-  --novo "${OUT}_felhen_dev,${OUT}_telepatia_dev,${OUT}_traces_dev" --out "$OUT/h2.json"
+if [[ "$EVAL_EXTRA" == *--abster* ]]; then
+  # H5: a opção "Não sei" muda as opções apresentadas, então o critério da H2 (pareado com o E1) não se aplica.
+  echo ">> H5 (--abster): pulei o lumi-eval h2; use scripts/analise_abster.py"
+else
+  lumi_exec lumi-eval h2 --base "${E1}_felhen_dev_${SUF},${E1}_telepatia_dev_${SUF},${E1}_traces_dev_${SUF}" \
+    --novo "${OUT}_felhen_dev,${OUT}_telepatia_dev,${OUT}_traces_dev" --out "$OUT/h2.json"
+fi
