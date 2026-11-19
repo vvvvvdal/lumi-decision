@@ -34,8 +34,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from .data import LOADERS, TRAIN_ONLY, drop_eval_overlap, load_cases, load_config, training_cases
-from .prompts import (LETTERS, candidate_tokens, option_char_ends, option_token_positions, order_options,
-                      render)
+from .prompts import (ABSTER, LETTERS, candidate_tokens, option_char_ends, option_token_positions, order_options,
+                      render, with_abstain)
 from .schema import Case
 
 LORA_TARGETS = ["in_proj", "up_proj", "down_proj", "q_proj", "k_proj", "v_proj", "o_proj"]
@@ -105,6 +105,7 @@ class Example:
     target: list
     gold_pos: int
     opt_pos: list | None = None  # E4: token do fim de cada opção (chaves da pointer head)
+    abster: bool = False  # H5: a última opção é ABSTER
 
 
 class Encoder:
@@ -140,7 +141,8 @@ class Encoder:
             ids = list(ids2)
             pos = option_token_positions(offs, prompt, option_char_ends(prompt, case, options))
         tgt = target_vector(case, options, soft)
-        return Example(case.id, case.family, ids, cands, tgt, [o[0] for o in options].index(case.gold), pos)
+        return Example(case.id, case.family, ids, cands, tgt, [o[0] for o in options].index(case.gold), pos,
+                       abster=options[-1][0] == ABSTER[0])
 
 
 def plan_microbatches(examples: list[Example], token_budget: int, max_micro: int, seed: int,
@@ -272,6 +274,70 @@ def option_loss(lp_opt, q, kind: str = "log"):
     raise ValueError(f"perda desconhecida: {kind} (opções: {', '.join(LOSSES)})")
 
 
+def abstain_loss(lp, target, gold_pos: int, lam: float, n_samples: int = 8, alpha: float = 1.0,
+                 beta: float = 0.0, lp_ref=None, generator=None):
+    """H5: perda de UM exemplo cuja última opção é ABSTER. `lp` = notas das K+1 letras (não normalizadas).
+
+    Três partes que não brigam:
+    - crença: log score nas K opções normais, renormalizadas sem o ABSTER (a probabilidade fica honesta);
+    - decisão (RL): a ação é responder ou abster, com P(abster) = sigmoid(g), g = z_X - logsumexp(z_1..z_K).
+      Sorteia `n_samples` ações; responder = a opção mais provável da crença. Recompensa: +1 se ela é o
+      gabarito, -lam se não é (com alvo suave, o valor esperado q_k - lam·(1 - q_k)), 0 se abster.
+      Vantagem = recompensa - média do grupo (estilo GRPO). O gradiente mexe só no logit do ABSTER
+      (logsumexp das normais destacado), para o RL não puxar a crença para a opção mais provável;
+    - coleira: beta·KL(pi || pi_ref) nas K+1 opções, com pi_ref = modelo sem adaptador.
+    Devolve (perda, estatísticas {taxa_abster_amostrada, recompensa_media, p_abster}).
+    """
+    import torch
+
+    K = lp.shape[0] - 1
+    q = torch.as_tensor(target, device=lp.device, dtype=lp.dtype)[:K]
+    q = q / q.sum().clamp_min(1e-12)
+    lp_ans = lp[:K] - torch.logsumexp(lp[:K], dim=0)
+    crenca = -(q * lp_ans).sum()
+    g = lp[K] - torch.logsumexp(lp[:K], dim=0).detach()
+    p_abs = torch.sigmoid(g.detach())
+    a = torch.bernoulli(p_abs.expand(n_samples), generator=generator)  # 1 = abster
+    k = int(lp_ans.detach().argmax())
+    r_resp = q[k] - lam * (1 - q[k])
+    rew = torch.where(a > 0, torch.zeros_like(a), r_resp.expand(n_samples))
+    adv = rew - rew.mean()
+    logp_a = torch.where(a > 0, torch.nn.functional.logsigmoid(g), torch.nn.functional.logsigmoid(-g))
+    politica = -(adv * logp_a).mean()
+    total = crenca + alpha * politica
+    if beta and lp_ref is not None:
+        lpa = lp - torch.logsumexp(lp, dim=0)
+        lpr = lp_ref.detach() - torch.logsumexp(lp_ref.detach(), dim=0)
+        total = total + beta * (lpa.exp() * (lpa - lpr)).sum()
+    return total, {"taxa_abster_amostrada": float(a.mean()), "recompensa_media": float(rew.mean()),
+                   "p_abster": float(p_abs)}
+
+
+def batch_loss_abster(model, batch: list[Example], pad_id: int, head_fp32, cfg: "TrainConfig"):
+    """H5: como `batch_loss`, para exemplos com ABSTER. A coleira faz um forward extra com o adaptador
+    desligado (sem gradiente). Devolve (soma das perdas, acertos da crença, massa das letras, estatísticas)."""
+    import torch
+
+    lps = option_scores(model, batch, pad_id, head_fp32)
+    refs = [None] * len(batch)
+    if cfg.abster_beta:
+        with torch.no_grad(), model.disable_adapter():
+            refs = option_scores(model, batch, pad_id, head_fp32)
+    losses, hits, mass = [], 0, 0.0
+    st = {"taxa_abster_amostrada": 0.0, "recompensa_media": 0.0, "p_abster": 0.0}
+    for lp, ref, e in zip(lps, refs, batch):
+        if not e.abster:
+            raise RuntimeError(f"{e.case_id}: exemplo sem ABSTER no treino da H5")
+        l, s1 = abstain_loss(lp, e.target, e.gold_pos, cfg.abster_custo, cfg.abster_amostras, cfg.abster_alpha,
+                             cfg.abster_beta, ref)
+        losses.append(l)
+        hits += int(int(lp[:-1].argmax()) == e.gold_pos)
+        mass += float(lp.detach().exp().sum())
+        for key in st:
+            st[key] += s1[key] / len(batch)
+    return torch.stack(losses).sum(), hits, mass / len(batch), st
+
+
 def batch_loss(model, batch: list[Example], pad_id: int, head_fp32=None, pointer=None, loss: str = "log"):
     """(soma das perdas, acertos, massa média das letras no vocabulário).
 
@@ -345,6 +411,10 @@ class TrainConfig:
     frozen_targets: list = field(default_factory=list)  # F2.2: alvos cujo LoRA nasce (B = 0) e fica CONGELADO
     source_caps: list = field(default_factory=list)  # F3: teto por família de uma fonte, ex.: felhen=650,f3=1625
     loss: str = "log"  # H4: log (A1) | brier | acerto | acerto_brier (ver `option_loss`)
+    abster_custo: float = 0.0   # H5: > 0 liga o braço (e); custo lambda de responder errado (abster vale 0)
+    abster_amostras: int = 8    # H5: ações sorteadas por exemplo (grupo do GRPO)
+    abster_alpha: float = 1.0   # H5: peso do termo de RL
+    abster_beta: float = 0.02   # H5: peso do KL para o modelo sem adaptador
 
 
 class _Stop:
@@ -442,6 +512,8 @@ def train(cfg: TrainConfig, out: Path, resume: bool = True, *, model=None, tok=N
     pad_id = tok.pad_token_id if tok.pad_token_id is not None else 0
     _, W = body_and_head(model)
     head32 = W.detach().float()
+    if cfg.abster_custo > 0 and (cfg.readout != "letras" or cfg.loss != "log"):
+        raise ValueError("H5 (--abster-custo) só com --readout letras e --loss log")
     if cfg.loss not in LOSSES:
         raise ValueError(f"perda desconhecida: {cfg.loss} (opções: {', '.join(LOSSES)})")
     if cfg.readout not in ("letras", "ponteiro", "residual"):
@@ -472,6 +544,8 @@ def train(cfg: TrainConfig, out: Path, resume: bool = True, *, model=None, tok=N
         pointer = new_head(W.shape[1], cfg.head_dim, cfg.head_seed, residual=cfg.readout == "residual").to(W.device)
 
     cases = cases if cases is not None else training_set_for(cfg)
+    if cfg.abster_custo > 0:  # H5: "Não sei" vira a última opção de todo caso de treino
+        cases = [with_abstain(c) for c in cases]
 
     def _offsets(t):
         e = tok(t, add_special_tokens=False, return_offsets_mapping=True)
@@ -559,8 +633,14 @@ def train(cfg: TrainConfig, out: Path, resume: bool = True, *, model=None, tok=N
             micro = [[exs[i] for i in plan[mi]] for mi in groups[gi]]
             n_ex = sum(len(b) for b in micro)
             loss_t, hits_t, mass_t = 0.0, 0, 0.0
+            abst = {}
             for b in micro:
-                loss_sum, hits, mass = batch_loss(model, b, pad_id, head32, pointer, loss=cfg.loss)
+                if cfg.abster_custo > 0:
+                    loss_sum, hits, mass, s1 = batch_loss_abster(model, b, pad_id, head32, cfg)
+                    for key, v in s1.items():
+                        abst[key] = abst.get(key, 0.0) + v * len(b)
+                else:
+                    loss_sum, hits, mass = batch_loss(model, b, pad_id, head32, pointer, loss=cfg.loss)
                 (loss_sum / n_ex).backward()  # média sobre o lote EFETIVO desta atualização
                 loss_t, hits_t, mass_t = loss_t + float(loss_sum.detach()), hits_t + hits, mass_t + mass * len(b)
                 toks += sum(len(e.ids) for e in b)
@@ -574,6 +654,7 @@ def train(cfg: TrainConfig, out: Path, resume: bool = True, *, model=None, tok=N
                        "acc": hits_t / n_ex, "massa_letras": mass_t / n_ex, "lr": sched.get_last_lr()[0],
                        "norma_grad": float(gn), "tokens_s": toks / max(1e-9, time.time() - t0),
                        "mem_gb": torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else None}
+                rec.update({key: v / n_ex for key, v in abst.items()})  # H5: taxa de abstenção e recompensa
                 log.write(json.dumps(rec) + "\n")
                 log.flush()
                 print(json.dumps(rec), flush=True)

@@ -15,7 +15,7 @@ cd "${SLURM_SUBMIT_DIR:-.}"; [ -f slurm/config.sh ] || cd "/raid/$USER/lumi-deci
 source slurm/config.sh
 export HF_HUB_OFFLINE=1
 lumi_gpu_smoke || exit 1
-BASE="--backend hf --model ceia-br/lumi-4b --revision 27b30f40b930fd05cee5e1c1f8790f70fa5b816d --dtype bfloat16 --native --no-generate --source res2 --split dev"
+BASE="--backend hf --model ceia-br/lumi-4b --revision 27b30f40b930fd05cee5e1c1f8790f70fa5b816d --dtype bfloat16 --native --no-generate --source res2 --split dev ${EVAL_EXTRA:-}"  # EVAL_EXTRA=--abster (H5)
 for nome in "$@"; do
   AD=""
   if [ "$nome" != congelado ]; then

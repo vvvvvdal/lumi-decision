@@ -26,7 +26,7 @@ import numpy as np
 from . import REPO_ROOT, metrics
 from .data import ARTIFACTS_DIR, SPLITS_CONFIG, check_integrity, load_cases, load_config
 from .prompts import (LETTERS, PROMPT_VERSION, candidate_tokens, load_template, option_char_ends,
-                      option_token_positions, order_options, render)
+                      option_token_positions, order_options, render, with_abstain)
 
 GEN_RE = re.compile(r"\s*(?:\*\*)?([A-Z])(?:\*\*)?[.)]?\s*")
 
@@ -61,6 +61,8 @@ def select_cases(args) -> list:
             cases.extend(items[: args.per_family])
     if args.limit:
         cases = cases[: args.limit]
+    if getattr(args, "abster", False):  # H5: acrescenta a opção "Não sei" (sempre a última)
+        cases = [with_abstain(c) for c in cases]
     return cases
 
 
@@ -486,6 +488,7 @@ def main(argv=None):
     r.add_argument("--no-generate", action="store_true")
     r.add_argument("--sem-ponteiro", action="store_true", help="HF: ignora a pointer head do adaptador e lê pelas letras")
     r.add_argument("--overwrite", action="store_true")
+    r.add_argument("--abster", action="store_true", help="H5: acrescenta a opção 'Não sei' no fim de cada caso")
     r.add_argument("--out", required=True)
     r.set_defaults(func=cmd_run)
 

@@ -33,10 +33,29 @@ def load_template(path: Path):
     return env.from_string(path.read_text(encoding="utf-8"))
 
 
+ABSTER = ("__abster__", "Não sei / passar para um humano.")  # H5: opção de abstenção (sempre a última)
+
+
+def with_abstain(case: Case) -> Case:
+    """Cópia do caso com a opção ABSTER no fim (H5). Não existe gabarito "abster"."""
+    if any(o[0] == ABSTER[0] for o in case.options):
+        return case
+    d = case.to_dict()
+    d["options"] = d["options"] + [list(ABSTER)]
+    return Case.from_dict(d)
+
+
 def order_options(case: Case, order: str) -> list[tuple[str, str]]:
     """`canonical` (ordem do dataset), `reversed`, `shuffle<seed>` (determinística por caso), `rot<k>` (rotação
-    de k posições, módulo n) ou `perm<índices>` (permutação explícita, ex.: `perm201`; exige n = nº de dígitos)."""
-    opts = list(case.options)
+    de k posições, módulo n) ou `perm<índices>` (permutação explícita, ex.: `perm201`; exige n = nº de dígitos).
+    A opção ABSTER (H5), se existir, fica fora da ordenação e sempre por último; `n` conta só as outras."""
+    opts = [o for o in case.options if o[0] != ABSTER[0]]
+    if len(opts) != len(case.options):
+        return _order(case, opts, order) + [tuple(ABSTER)]
+    return _order(case, opts, order)
+
+
+def _order(case: Case, opts: list, order: str) -> list[tuple[str, str]]:
     if order == "canonical":
         return opts
     if order == "reversed":
