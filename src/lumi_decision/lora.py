@@ -365,7 +365,8 @@ def batch_loss_abster(model, batch: list[Example], pad_id: int, head_fp32, cfg: 
     return torch.stack(losses).sum(), hits, mass / len(batch), st
 
 
-def batch_loss(model, batch: list[Example], pad_id: int, head_fp32=None, pointer=None, loss: str = "log"):
+def batch_loss(model, batch: list[Example], pad_id: int, head_fp32=None, pointer=None, loss: str = "log",
+               bandit_clip: float = 10.0):
     """(soma das perdas, acertos, massa média das letras no vocabulário).
 
     Perda = entropia cruzada entre o alvo e a distribuição RENORMALIZADA entre as opções apresentadas
@@ -383,7 +384,7 @@ def batch_loss(model, batch: list[Example], pad_id: int, head_fp32=None, pointer
         lp_opt = lp - torch.logsumexp(lp, dim=0)
         q = torch.tensor(e.target, device=lp.device, dtype=lp.dtype)
         if loss.startswith("bandit_"):  # H6: só o resultado da opção sorteada
-            losses.append(bandit_loss(lp_opt, q, loss))
+            losses.append(bandit_loss(lp_opt, q, loss, clip=bandit_clip))
         else:
             losses.append(option_loss(lp_opt, q, loss))
         hits += int(int(lp.argmax()) == e.gold_pos)
@@ -441,6 +442,7 @@ class TrainConfig:
     frozen_targets: list = field(default_factory=list)  # F2.2: alvos cujo LoRA nasce (B = 0) e fica CONGELADO
     source_caps: list = field(default_factory=list)  # F3: teto por família de uma fonte, ex.: felhen=650,f3=1625
     loss: str = "log"  # H4: log (A1) | brier | acerto | acerto_brier (ver `option_loss`)
+    bandit_clip: float = 10.0   # H6: corte do peso 1/pi do bandit_log
     abster_custo: float = 0.0   # H5: > 0 liga o braço (e); custo lambda de responder errado (abster vale 0)
     abster_amostras: int = 8    # H5: ações sorteadas por exemplo (grupo do GRPO)
     abster_alpha: float = 1.0   # H5: peso do termo de RL
@@ -670,7 +672,8 @@ def train(cfg: TrainConfig, out: Path, resume: bool = True, *, model=None, tok=N
                     for key, v in s1.items():
                         abst[key] = abst.get(key, 0.0) + v * len(b)
                 else:
-                    loss_sum, hits, mass = batch_loss(model, b, pad_id, head32, pointer, loss=cfg.loss)
+                    loss_sum, hits, mass = batch_loss(model, b, pad_id, head32, pointer, loss=cfg.loss,
+                                                      bandit_clip=cfg.bandit_clip)
                 (loss_sum / n_ex).backward()  # média sobre o lote EFETIVO desta atualização
                 loss_t, hits_t, mass_t = loss_t + float(loss_sum.detach()), hits_t + hits, mass_t + mass * len(b)
                 toks += sum(len(e.ids) for e in b)
