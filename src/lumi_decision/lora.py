@@ -80,8 +80,44 @@ def parse_source_caps(items) -> dict:
     return out
 
 
+def build_adapt_set(familias, k: int, seed: int = 0, loader=None) -> list[Case]:
+    """H9: k GRUPOS rotulados de cada família RESERVADA (`fonte:família`), para continuar um LoRA nela.
+
+    Pool: os casos da família fora do `dev`/`test` (Felhen: o `train` das reservadas, nunca usado). Se não houver
+    nenhum (Telepatia: as reservadas só existem no `dev`), usa o `dev`; aí esses grupos precisam sair da
+    avaliação (`adapt_grupos.json`, lido por `scripts/analise_h9.py`). Sorteio por hash, determinístico."""
+    loader = loader or (lambda src: load_cases(src, load_config()))
+    cache, out = {}, []
+    for item in familias:
+        src, fam = item.split(":", 1)
+        if src not in cache:
+            cache[src] = loader(src)
+        da_fam = [c for c in cache[src] if c.family == fam]
+        if not da_fam:
+            raise ValueError(f"família desconhecida: {item}")
+        if not all(c.held_out for c in da_fam):
+            raise ValueError(f"{item} não é família reservada")
+        pool = [c for c in da_fam if c.split not in ("dev", "test")] or [c for c in da_fam if c.split == "dev"]
+        grupos = sorted({c.group_id for c in pool}, key=lambda g: hashlib.sha256(f"{seed}:{g}".encode()).hexdigest())
+        if len(grupos) < k:
+            raise ValueError(f"{item}: só {len(grupos)} grupos para k = {k}")
+        esc = set(grupos[:k])
+        out.extend(c for c in pool if c.group_id in esc)
+    return out
+
+
+def adapt_registro(cases: list[Case]) -> list[dict]:
+    """O que vai para `adapt_grupos.json`: um registro por (fonte, família, split) com os group_ids usados."""
+    by = {}
+    for c in cases:
+        by.setdefault((c.source, c.family, c.split), set()).add(c.group_id)
+    return [{"fonte": s, "familia": f, "split": sp, "grupos": sorted(g)} for (s, f, sp), g in sorted(by.items())]
+
+
 def training_set_for(cfg: "TrainConfig") -> list[Case]:
     """O conjunto de treino exatamente como o `train` monta (usado também pela contagem de orçamento)."""
+    if cfg.adapt_k > 0:  # H9: só os k grupos rotulados das famílias reservadas
+        return build_adapt_set(cfg.adapt_familias, cfg.adapt_k, cfg.seed if cfg.data_seed < 0 else cfg.data_seed)
     return build_training_set(cfg.sources, cfg.cap_per_family, cfg.seed if cfg.data_seed < 0 else cfg.data_seed,
                               parse_source_caps(cfg.source_caps))
 
@@ -463,6 +499,8 @@ class TrainConfig:
     abster_amostras: int = 8    # H5: ações sorteadas por exemplo (grupo do GRPO)
     abster_alpha: float = 1.0   # H5: peso do termo de RL
     abster_beta: float = 0.02   # H5: peso do KL para o modelo sem adaptador
+    adapt_familias: list = field(default_factory=list)  # H9: fonte:família reservadas para o treino curto
+    adapt_k: int = 0            # H9: > 0 troca o treino por k grupos rotulados de cada família de adapt_familias
 
 
 class _Stop:
@@ -592,6 +630,9 @@ def train(cfg: TrainConfig, out: Path, resume: bool = True, *, model=None, tok=N
         pointer = new_head(W.shape[1], cfg.head_dim, cfg.head_seed, residual=cfg.readout == "residual").to(W.device)
 
     cases = cases if cases is not None else training_set_for(cfg)
+    if cfg.adapt_k > 0:  # H9: registra os grupos usados, para a análise tirá-los da avaliação
+        (out / "adapt_grupos.json").write_text(json.dumps(adapt_registro(cases), indent=1, ensure_ascii=False),
+                                               encoding="utf-8")
     if cfg.abster_custo > 0:  # H5: "Não sei" vira a última opção de todo caso de treino
         cases = [with_abstain(c) for c in cases]
 
