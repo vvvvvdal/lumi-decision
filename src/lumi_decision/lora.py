@@ -248,7 +248,34 @@ def option_scores(model, batch: list[Example], pad_id: int, head_fp32=None, poin
     return [logp[i, e.cands] + z[i] for i, e in enumerate(batch)]
 
 
-LOSSES = ("log", "brier", "acerto", "acerto_brier")
+LOSSES = ("log", "brier", "acerto", "acerto_brier", "bandit_log", "bandit_acerto")
+
+
+def bandit_loss(lp_opt, q, kind: str = "bandit_log", n_samples: int = 8, clip: float = 10.0, generator=None):
+    """H6: perda com FEEDBACK DE BANDIT. O modelo sorteia `n_samples` opções a ~ pi e só vê a recompensa da
+    opção sorteada, r(a) = q_a (1 se acertou, 0 se errou; com alvo suave, a chance de a opção estar certa).
+    Nunca usa o gabarito das opções que não sorteou.
+
+    - `bandit_acerto`: REINFORCE com recompensa r(a) e média do grupo como base. Estilo RLVR, não própria.
+    - `bandit_log`: REINFORCE com recompensa w(a) = r(a) / pi(a) (peso de importância, cortado em `clip`).
+      Em valor esperado, sum_a pi(a)·(q_a/pi(a))·grad log pi(a) = sum_a q_a·grad log pi(a): o gradiente do LOG
+      SCORE com o gabarito completo. Ou seja, uma regra própria aprendida só com o resultado da escolha.
+    A base (média das outras amostras do grupo) não muda o valor esperado do gradiente e reduz a variância.
+    """
+    import torch
+
+    p = lp_opt.detach().exp()
+    a = torch.multinomial(p, n_samples, replacement=True, generator=generator)
+    r = q[a]
+    if kind == "bandit_log":
+        r = (r / p[a].clamp_min(1e-8)).clamp(max=clip)
+    elif kind != "bandit_acerto":
+        raise ValueError(f"perda de bandit desconhecida: {kind}")
+    # base "deixa um de fora": cada amostra é comparada com a média das OUTRAS (a média com ela mesma encolheria
+    # o gradiente por (G-1)/G; assim o valor esperado fica exatamente o do log score)
+    base = (r.sum() - r) / (n_samples - 1) if n_samples > 1 else torch.zeros_like(r)
+    adv = r - base
+    return -(adv * lp_opt[a]).mean()
 
 
 def option_loss(lp_opt, q, kind: str = "log"):
@@ -355,7 +382,10 @@ def batch_loss(model, batch: list[Example], pad_id: int, head_fp32=None, pointer
             lp = torch.log_softmax(lp, dim=0)
         lp_opt = lp - torch.logsumexp(lp, dim=0)
         q = torch.tensor(e.target, device=lp.device, dtype=lp.dtype)
-        losses.append(option_loss(lp_opt, q, loss))
+        if loss.startswith("bandit_"):  # H6: só o resultado da opção sorteada
+            losses.append(bandit_loss(lp_opt, q, loss))
+        else:
+            losses.append(option_loss(lp_opt, q, loss))
         hits += int(int(lp.argmax()) == e.gold_pos)
         mass += float(lp.detach().exp().sum())
     return torch.stack(losses).sum(), hits, mass / len(batch)
