@@ -51,3 +51,45 @@ def test_bandit_acerto_fica_superconfiante():
 def test_perda_desconhecida():
     with pytest.raises(ValueError):
         lora.bandit_loss(torch.log_softmax(torch.zeros(3), 0), torch.tensor([1.0, 0, 0]), "bandit_brier")
+
+
+@pytest.mark.parametrize("kind,ref", [("bandit_log", "log"), ("bandit_acerto", "acerto")])
+def test_exploracao_mantem_o_gradiente_esperado(kind, ref):
+    """H6d: sortear de (1-eps)·pi + eps/K com a correção pi/mu dá, em média, o mesmo gradiente da H6."""
+    g = torch.Generator().manual_seed(1)
+    z0 = torch.tensor([2.5, -1.5, 0.0], dtype=torch.float64)  # a certa (índice 1) tem pi ≈ 2%
+    q = torch.tensor([0.0, 1.0, 0.0], dtype=torch.float64)
+    acc = torch.zeros(3, dtype=torch.float64)
+    n = 6000
+    for _ in range(n):
+        z = z0.clone().requires_grad_(True)
+        lora.bandit_loss(torch.log_softmax(z, 0), q, kind, n_samples=8, clip=1e9, explorar=0.3,
+                         generator=g).backward()
+        acc += z.grad
+    z = z0.clone().requires_grad_(True)
+    lora.option_loss(torch.log_softmax(z, 0), q, ref).backward()
+    assert torch.allclose(acc / n, z.grad, atol=0.05 * float(z.grad.abs().max()) + 0.01)
+
+
+def test_exploracao_zero_e_identica_a_h6():
+    lp = torch.log_softmax(torch.tensor([0.4, -0.3, 0.1]), 0)
+    q = torch.tensor([0.0, 1.0, 0.0])
+    a = lora.bandit_loss(lp, q, "bandit_log", generator=torch.Generator().manual_seed(5))
+    b = lora.bandit_loss(lp, q, "bandit_log", explorar=0.0, generator=torch.Generator().manual_seed(5))
+    assert torch.equal(a, b)
+
+
+def test_exploracao_testa_a_resposta_rara():
+    """Com pi(certa) ≈ 0,0005, sem exploração quase nunca há sinal; com eps = 0,2 o gradiente aparece."""
+    lp = torch.log_softmax(torch.tensor([5.0, -2.6, 0.0], dtype=torch.float64), 0)
+    q = torch.tensor([0.0, 1.0, 0.0], dtype=torch.float64)
+    def com_sinal(eps):
+        g = torch.Generator().manual_seed(2)
+        return sum(float(lora.bandit_loss(lp, q, "bandit_log", n_samples=8, clip=1e9, explorar=eps, generator=g)) != 0
+                   for _ in range(200))
+    assert com_sinal(0.0) < 10 and com_sinal(0.2) > 50  # 1-(1-0,2/3)^8 ≈ 42%
+
+
+def test_explorar_invalido():
+    with pytest.raises(ValueError):
+        lora.bandit_loss(torch.log_softmax(torch.zeros(3), 0), torch.tensor([1.0, 0, 0]), explorar=1.0)

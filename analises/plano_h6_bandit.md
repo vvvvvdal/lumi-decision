@@ -42,3 +42,23 @@ as hipóteses parecerem se confirmar.
   limita isso, mas introduz um viés pequeno.
 - **Sinal mais fraco:** com o mesmo número de passos, o bandit pode aprender menos. Se a perda não cair no
   teste curto, avaliar mais passos antes de concluir.
+
+## H6d: exploração (registrado em 20/11, antes de rodar)
+
+**Diagnóstico da H6c:** no Felhen reservado, o `bandit_log` empata no Brier e perde na NLL. Os erros a mais
+são poucos casos com confiança alta na resposta errada. Quando pi(certa) ≈ 0, a certa quase nunca é
+sorteada, e o modelo não recebe sinal para corrigir.
+
+**Mudança:** `--bandit-explorar eps`.
+- O sorteio passa a vir de mu = (1 − eps)·pi + eps/K.
+- A correção pi/mu mantém o mesmo gradiente esperado. O peso fica limitado a K/eps.
+- Com eps = 0, o resultado é idêntico à H6 (teste `test_exploracao_zero_e_identica_a_h6`).
+
+**Run:** `h4_bandit_log_c1000_g32_x02` (eps = 0,2, G = 32, corte 1000, 1 época, semente 0), contra o `h4_log`.
+
+**Leitura:**
+- **Ajuda:** o ECE do Felhen reservado fica abaixo de 0,099 (G = 32 sem exploração, s0) e a NLL do Felhen
+  reservado cai em relação ao G = 32.
+- **Não ajuda:** valores iguais ou piores. Nesse caso, o custo de calibração não vem da falta de
+  exploração.
+- Só conta como confirmado com as sementes 1 e 2.

@@ -251,30 +251,43 @@ def option_scores(model, batch: list[Example], pad_id: int, head_fp32=None, poin
 LOSSES = ("log", "brier", "acerto", "acerto_brier", "bandit_log", "bandit_acerto")
 
 
-def bandit_loss(lp_opt, q, kind: str = "bandit_log", n_samples: int = 8, clip: float = 10.0, generator=None):
-    """H6: perda com FEEDBACK DE BANDIT. O modelo sorteia `n_samples` opções a ~ pi e só vê a recompensa da
-    opção sorteada, r(a) = q_a (1 se acertou, 0 se errou; com alvo suave, a chance de a opção estar certa).
+def bandit_loss(lp_opt, q, kind: str = "bandit_log", n_samples: int = 8, clip: float = 10.0, explorar: float = 0.0,
+                generator=None):
+    """H6: perda com FEEDBACK DE BANDIT. O modelo sorteia `n_samples` opções e só vê a recompensa da opção
+    sorteada, r(a) = q_a (1 se acertou, 0 se errou; com alvo suave, a chance de a opção estar certa).
     Nunca usa o gabarito das opções que não sorteou.
 
-    - `bandit_acerto`: REINFORCE com recompensa r(a) e média do grupo como base. Estilo RLVR, não própria.
-    - `bandit_log`: REINFORCE com recompensa w(a) = r(a) / pi(a) (peso de importância, cortado em `clip`).
+    - `bandit_acerto`: REINFORCE com recompensa u(a) = q_a e média do grupo como base. Estilo RLVR, não própria.
+    - `bandit_log`: REINFORCE com recompensa u(a) = q_a / pi(a) (peso de importância, cortado em `clip`).
       Em valor esperado, sum_a pi(a)·(q_a/pi(a))·grad log pi(a) = sum_a q_a·grad log pi(a): o gradiente do LOG
       SCORE com o gabarito completo. Ou seja, uma regra própria aprendida só com o resultado da escolha.
-    A base (média das outras amostras do grupo) não muda o valor esperado do gradiente e reduz a variância.
+
+    H6d, exploração (`explorar` = eps > 0): sorteia de mu = (1 - eps)·pi + eps/K em vez de pi, para que respostas
+    a que o modelo dá quase zero ainda sejam testadas. A correção w = pi(a)/mu(a) mantém o mesmo gradiente
+    esperado: E_mu[w·u·grad log pi] = E_pi[u·grad log pi]. No bandit_log, w·u = q_a/mu(a) <= K/eps: o peso não
+    explode. Com eps = 0, mu = pi, w = 1 e tudo fica idêntico à H6.
+
+    Base "deixa um de fora": cada amostra i é comparada com b_i = média das OUTRAS recompensas corrigidas.
+    Como b_i não depende da amostra i, o termo b_i·w_i·grad log pi tem média zero (sum_a pi·grad log pi = 0):
+    não muda o valor esperado e reduz a variância. (A média incluindo a própria amostra encolheria o gradiente
+    por (G-1)/G.)
     """
     import torch
 
     p = lp_opt.detach().exp()
-    a = torch.multinomial(p, n_samples, replacement=True, generator=generator)
-    r = q[a]
+    if not 0.0 <= explorar < 1.0:
+        raise ValueError(f"explorar deve estar em [0, 1): {explorar}")
+    mu = (1.0 - explorar) * p + explorar / p.numel() if explorar > 0 else p
+    a = torch.multinomial(mu, n_samples, replacement=True, generator=generator)
+    u = q[a]
     if kind == "bandit_log":
-        r = (r / p[a].clamp_min(1e-8)).clamp(max=clip)
+        u = (u / p[a].clamp_min(1e-8)).clamp(max=clip)
     elif kind != "bandit_acerto":
         raise ValueError(f"perda de bandit desconhecida: {kind}")
-    # base "deixa um de fora": cada amostra é comparada com a média das OUTRAS (a média com ela mesma encolheria
-    # o gradiente por (G-1)/G; assim o valor esperado fica exatamente o do log score)
+    w = p[a] / mu[a].clamp_min(1e-12) if explorar > 0 else torch.ones_like(u)
+    r = u * w
     base = (r.sum() - r) / (n_samples - 1) if n_samples > 1 else torch.zeros_like(r)
-    adv = r - base
+    adv = r - base * w
     return -(adv * lp_opt[a]).mean()
 
 
@@ -366,7 +379,7 @@ def batch_loss_abster(model, batch: list[Example], pad_id: int, head_fp32, cfg: 
 
 
 def batch_loss(model, batch: list[Example], pad_id: int, head_fp32=None, pointer=None, loss: str = "log",
-               bandit_clip: float = 10.0, bandit_amostras: int = 8):
+               bandit_clip: float = 10.0, bandit_amostras: int = 8, bandit_explorar: float = 0.0):
     """(soma das perdas, acertos, massa média das letras no vocabulário).
 
     Perda = entropia cruzada entre o alvo e a distribuição RENORMALIZADA entre as opções apresentadas
@@ -384,7 +397,8 @@ def batch_loss(model, batch: list[Example], pad_id: int, head_fp32=None, pointer
         lp_opt = lp - torch.logsumexp(lp, dim=0)
         q = torch.tensor(e.target, device=lp.device, dtype=lp.dtype)
         if loss.startswith("bandit_"):  # H6: só o resultado da opção sorteada
-            losses.append(bandit_loss(lp_opt, q, loss, n_samples=bandit_amostras, clip=bandit_clip))
+            losses.append(bandit_loss(lp_opt, q, loss, n_samples=bandit_amostras, clip=bandit_clip,
+                                      explorar=bandit_explorar))
         else:
             losses.append(option_loss(lp_opt, q, loss))
         hits += int(int(lp.argmax()) == e.gold_pos)
@@ -444,6 +458,7 @@ class TrainConfig:
     loss: str = "log"  # H4: log (A1) | brier | acerto | acerto_brier (ver `option_loss`)
     bandit_clip: float = 10.0   # H6: corte do peso 1/pi do bandit_log
     bandit_amostras: int = 8    # H6: opções sorteadas por caso (G)
+    bandit_explorar: float = 0.0  # H6d: eps de exploração (sorteia de (1-eps)·pi + eps/K; 0 = desligado)
     abster_custo: float = 0.0   # H5: > 0 liga o braço (e); custo lambda de responder errado (abster vale 0)
     abster_amostras: int = 8    # H5: ações sorteadas por exemplo (grupo do GRPO)
     abster_alpha: float = 1.0   # H5: peso do termo de RL
@@ -674,7 +689,8 @@ def train(cfg: TrainConfig, out: Path, resume: bool = True, *, model=None, tok=N
                         abst[key] = abst.get(key, 0.0) + v * len(b)
                 else:
                     loss_sum, hits, mass = batch_loss(model, b, pad_id, head32, pointer, loss=cfg.loss,
-                                                      bandit_clip=cfg.bandit_clip, bandit_amostras=cfg.bandit_amostras)
+                                                      bandit_clip=cfg.bandit_clip, bandit_amostras=cfg.bandit_amostras,
+                                                      bandit_explorar=cfg.bandit_explorar)
                 (loss_sum / n_ex).backward()  # média sobre o lote EFETIVO desta atualização
                 loss_t, hits_t, mass_t = loss_t + float(loss_sum.detach()), hits_t + hits, mass_t + mass * len(b)
                 toks += sum(len(e.ids) for e in b)
