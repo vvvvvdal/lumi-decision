@@ -122,9 +122,19 @@ def option_token_positions(offsets, prompt: str, char_ends: list[int]) -> list[i
     return out
 
 
-def render(template, case: Case, options: list[tuple[str, str]]) -> str:
-    return template.render(messages=[{"role": "user", "content": user_message(case, options)}],
-                           add_generation_prompt=True, enable_thinking=False)
+def exemplo_turnos(ex: Case) -> list[dict]:
+    """H8: um caso com gabarito vira um par user/assistant (opções na ordem canônica; resposta = letra certa)."""
+    opts = order_options(ex, "canonical")
+    letra = LETTERS[[o[0] for o in opts].index(ex.gold)]
+    return [{"role": "user", "content": user_message(ex, opts)}, {"role": "assistant", "content": letra}]
+
+
+def render(template, case: Case, options: list[tuple[str, str]], exemplos=()) -> str:
+    """Prompt do caso. H8: `exemplos` (casos com gabarito da mesma família) entram antes, como turnos
+    user/assistant já respondidos. Sem exemplos, o prompt é exatamente o de sempre."""
+    msgs = [t for ex in exemplos for t in exemplo_turnos(ex)]
+    msgs.append({"role": "user", "content": user_message(case, options)})
+    return template.render(messages=msgs, add_generation_prompt=True, enable_thinking=False)
 
 
 def candidate_tokens(tokenize, prompt: str, n: int) -> tuple[list[int], list[int]]:

@@ -66,10 +66,31 @@ def select_cases(args) -> list:
     return cases
 
 
-def predict_one(backend, template, case, order, generate=True, max_new_tokens=16) -> dict:
+def escolher_exemplos(case, pool: list, k: int, seed: int = 0) -> list:
+    """H8: k casos com gabarito da MESMA família, nunca do mesmo grupo do caso (mesmo texto/estado).
+    Ordem determinística por caso (hash), para a avaliação ser reentrante e reprodutível."""
+    cands = [c for c in pool if c.family == case.family and c.group_id != case.group_id]
+    cands.sort(key=lambda c: hashlib.sha256(f"{seed}:{case.id}:{c.id}".encode()).hexdigest())
+    escolhidos, grupos = [], set()
+    for c in cands:  # um exemplo por grupo: perguntas diferentes do mesmo estado não contam como exemplos novos
+        if c.group_id not in grupos:
+            escolhidos.append(c)
+            grupos.add(c.group_id)
+        if len(escolhidos) == k:
+            break
+    return escolhidos
+
+
+def predict_one(backend, template, case, order, generate=True, max_new_tokens=16, exemplos=(),
+                max_prompt_tokens=0) -> dict:
     options = order_options(case, order)
-    prompt = render(template, case, options)
-    ids, cands = candidate_tokens(backend.tokenize, prompt, len(options))
+    exemplos = list(exemplos)
+    while True:  # H8: tira exemplos do fim até o prompt caber no teto de tokens
+        prompt = render(template, case, options, exemplos)
+        ids, cands = candidate_tokens(backend.tokenize, prompt, len(options))
+        if not exemplos or not max_prompt_tokens or len(ids) <= max_prompt_tokens:
+            break
+        exemplos.pop()
     pointer = getattr(backend, "pointer", None) is not None
     if pointer:  # E4: mesmo prompt; a pointer head lê o fim de cada opção e a última posição
         ids2, offs = backend.offsets(prompt)
@@ -95,6 +116,8 @@ def predict_one(backend, template, case, order, generate=True, max_new_tokens=16
     }
     if case.gold_dist:
         row["gold_dist"] = case.gold_dist
+    if exemplos:
+        row["exemplos_ids"] = [e.id for e in exemplos]
     if generate:
         toks, text, ginfo = backend.generate(ids, max_new_tokens)
         mm = GEN_RE.fullmatch(text)
@@ -131,6 +154,8 @@ def run_fingerprint(args, cases) -> dict:
            if getattr(args, "adapter", None) and (Path(args.adapter) / "ponteiro.safetensors").exists()
            and not getattr(args, "sem_ponteiro", False) else {}),
         **({"sem_ponteiro": True} if getattr(args, "sem_ponteiro", False) else {}),
+        **({"exemplos_contexto": args.exemplos_contexto, "max_prompt_tokens": args.max_prompt_tokens}
+           if getattr(args, "exemplos_contexto", 0) else {}),
     }
 
 
@@ -166,6 +191,17 @@ def cmd_run(args):
         history = old.get("execucoes", [])
     orders = args.orders.split(",")
     template = load_template(Path(args.template))
+    exemplos = {}
+    if args.exemplos_contexto > 0:  # H8: exemplos com gabarito da mesma família, só para casos RESERVADOS
+        todos = load_cases(args.source, load_config())
+        # pool: casos da família reservada fora do split avaliado (Felhen: o train das reservadas, nunca usado);
+        # se a família não tiver nenhum (Telepatia: reservadas só no dev), usa o próprio split, sem o grupo do caso
+        for c in cases:
+            if not c.held_out:
+                continue
+            outros = [x for x in todos if x.family == c.family and x.split not in (args.split, "test")]
+            pool = outros or [x for x in todos if x.family == c.family and x.split == args.split]
+            exemplos[c.id] = escolher_exemplos(c, pool, args.exemplos_contexto, args.seed)
     kw = {k: v for k, v in {"model": args.model, "server_bin": args.server_bin, "url": args.url,
                             "revision": args.revision, "dtype": args.dtype}.items() if v is not None}
     if args.backend == "llamacpp":
@@ -194,7 +230,8 @@ def cmd_run(args):
                 for order in orders:
                     if (case.id, order) in done:
                         continue
-                    row = predict_one(backend, template, case, order, generate=not args.no_generate)
+                    row = predict_one(backend, template, case, order, generate=not args.no_generate,
+                                      exemplos=exemplos.get(case.id, ()), max_prompt_tokens=args.max_prompt_tokens)
                     f.write(json.dumps(row, ensure_ascii=False) + "\n")
                     f.flush()
                 if (i + 1) % 25 == 0 or i + 1 == len(cases):
@@ -489,6 +526,9 @@ def main(argv=None):
     r.add_argument("--sem-ponteiro", action="store_true", help="HF: ignora a pointer head do adaptador e lê pelas letras")
     r.add_argument("--overwrite", action="store_true")
     r.add_argument("--abster", action="store_true", help="H5: acrescenta a opção 'Não sei' no fim de cada caso")
+    r.add_argument("--exemplos-contexto", type=int, default=0,
+                   help="H8: nº de casos com gabarito da mesma família no prompt (só casos reservados)")
+    r.add_argument("--max-prompt-tokens", type=int, default=6000, help="H8: teto do prompt; corta exemplos se passar")
     r.add_argument("--out", required=True)
     r.set_defaults(func=cmd_run)
 
