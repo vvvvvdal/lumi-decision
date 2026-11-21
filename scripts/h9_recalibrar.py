@@ -48,6 +48,15 @@ def grupos_de_treino(runs: Path, novo: str) -> set[str]:
     return {g for r in reg for g in r["grupos"]}
 
 
+def vistas(calib: list[dict], dev: list[dict]) -> dict:
+    """Famílias vistas: ECE/NLL crus e com a T global (ajustada nas vistas do calib, como o `lumi-eval calibrar`)."""
+    m = h7.metrics
+    vc, vd = [r for r in calib if not r["held_out"]], [r for r in dev if not r["held_out"]]
+    T = m.fit_temperature(vc)
+    vt = m.with_temperature(vd, T)
+    return {"acc": acc(vd), "T": T, "ece_cru": m.ece(vd), "ece_T": m.ece(vt), "nll_cru": m.nll(vd), "nll_T": m.nll(vt)}
+
+
 def acc(rows: list[dict]) -> float:
     return sum(r["pred"] == r["gold"] for r in rows) / len(rows)
 
@@ -70,9 +79,12 @@ def main(argv=None):
     linhas = ["| fonte | braço | acc res. | método | k | ECE | NLL | cobertura | risco aceitos |",
               "|---|---|---:|---|---:|---|---|---|---|"]
     bruto = {}
+    t_vis = ["| fonte | braço | recorte | acc | ECE cru | ECE com T global | NLL cru | NLL com T global | T |",
+             "|---|---|---|---:|---:|---:|---:|---:|---:|"]
     for fonte in a.fontes.split(","):
         por_braco = {"base": [], "novo": []}
         accs = {"base": [], "novo": []}
+        vist = {"base": [], "novo": []}
         for s in (int(x) for x in a.sementes.split(",")):
             nb, nn = nome(a.base, s), nome(a.novo, s)
             if not (runs / nn / "adapt_grupos.json").exists():
@@ -95,6 +107,7 @@ def main(argv=None):
                 r = h7.uma_fonte(calib, dev, ks, a.repeticoes, a.risco, "calib", a.min_aceitos, rng)
                 por_braco[braco].append(r)
                 accs[braco].append(acc([x for x in dev if x["held_out"]]))
+                vist[braco].append(vistas(calib, dev))
                 bruto.setdefault(fonte, {}).setdefault(braco, {})[s] = r
         for braco, rotulo in (("base", a.base), ("novo", a.novo)):
             sem = por_braco[braco]
@@ -113,7 +126,12 @@ def main(argv=None):
             for k in ks:
                 linha("T_fam+tau_fam", k, [m for x in sem for m in x[f"T_fam+tau_fam|{k}"]])
             linha("oráculo (família toda)", "—", [x["oraculo"] for x in sem])
-    tabela = "\n".join(linhas)
+            v = vist[braco]
+            t_vis.append(f"| {fonte} | {rotulo} | vistas | {np.mean([x['acc'] for x in v]):.3f} | "
+                         f"{np.mean([x['ece_cru'] for x in v]):.3f} | {np.mean([x['ece_T'] for x in v]):.3f} | "
+                         f"{np.mean([x['nll_cru'] for x in v]):.3f} | {np.mean([x['nll_T'] for x in v]):.3f} | "
+                         f"{np.mean([x['T'] for x in v]):.2f} |")
+    tabela = "\n".join(linhas) + "\n\nFamílias VISTAS do dev (T ajustada nas vistas do calib, média entre sementes):\n" + "\n".join(t_vis)
     nota = (f"\nReservadas do dev SEM os grupos do treino curto (nos dois braços), risco-alvo {a.risco:.0%}. "
             "Média [2,5%; 97,5%] entre sementes e sorteios dos k grupos (demais linhas: só entre sementes). "
             "Os k grupos de calibração saem do mesmo dev e ficam fora da medida.")

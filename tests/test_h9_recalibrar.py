@@ -55,3 +55,4 @@ def test_recalibrar_h9_remove_treino_e_desfaz_superconfianca(tmp_path):
     ece_cru = novo["sem_T"]["ece"]
     ece_T = np.mean([m["ece"] for m in novo["T_fam|25"]])
     assert ece_cru > 0.10 and ece_T < ece_cru - 0.04               # a recalibração desfaz a superconfiança
+    assert "Famílias VISTAS" in out.read_text(encoding="utf-8")
