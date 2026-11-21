@@ -18,6 +18,7 @@ import re
 import subprocess
 import sys
 import time
+import zlib
 from collections import Counter, defaultdict
 from pathlib import Path
 
@@ -83,7 +84,7 @@ def escolher_exemplos(case, pool: list, k: int, seed: int = 0) -> list:
 
 
 def predict_one(backend, template, case, order, generate=True, max_new_tokens=16, exemplos=(),
-                max_prompt_tokens=0, raciocinio=0) -> dict:
+                max_prompt_tokens=0, raciocinio=0, amostras=0, temperatura=1.0, top_p=0.95) -> dict:
     options = order_options(case, order)
     exemplos = list(exemplos)
     while True:  # H8: tira exemplos do fim até o prompt caber no teto de tokens
@@ -101,7 +102,8 @@ def predict_one(backend, template, case, order, generate=True, max_new_tokens=16
         fim = backend.tokenize(FIM_THINK)
         toks, texto, ginfo = backend.generate(backend.tokenize(p_gen), raciocinio,
                                               stop_ids=fim if len(fim) == 1 else None)
-        fechado = com_raciocinio(p_gen, prompt, texto)
+        prompt_off = prompt
+        fechado = com_raciocinio(p_gen, prompt_off, texto)
         letra = letra_do_raciocinio(texto, len(options))
         rac = {"raciocinio": texto.split(FIM_THINK, 1)[0], "rac_tokens": len(toks),
                "rac_parada": "fim" if (ginfo.get("stop_type") == "stop" or FIM_THINK in texto) else ginfo.get("stop_type"),
@@ -126,6 +128,24 @@ def predict_one(backend, template, case, order, generate=True, max_new_tokens=16
         if escolhido is None:
             raise ValueError(f"{case.id}: nenhuma variante de separador depois do </think> serve para ler as letras")
         rac["rac_sufixo"] = escolhido
+        if amostras > 0:  # H11: G raciocínios sorteados, como um grupo de rollouts do GRPO
+            semente = zlib.crc32(f"{case.id}|{order}".encode())
+            res, ainfo = backend.amostrar(backend.tokenize(p_gen), raciocinio, amostras, temperatura=temperatura,
+                                          top_p=top_p, stop_ids=fim if len(fim) == 1 else None, semente=semente)
+            grupo = []
+            for toks_a, texto_a, parada_a in res:
+                fa = com_raciocinio(p_gen, prompt_off, texto_a) + SUFIXOS_RAC[escolhido]
+                ia, ca = candidate_tokens(backend.tokenize, fa, len(options))
+                la, _ = backend.readout(ia, ca)
+                ma = max(la)
+                wa = [math.exp(x - ma) for x in la]
+                letra_a = letra_do_raciocinio(texto_a, len(options))
+                grupo.append({"raciocinio": texto_a.split(FIM_THINK, 1)[0], "tokens": len(toks_a),
+                              "parada": "fim" if (parada_a == "stop" or FIM_THINK in texto_a) else parada_a,
+                              "probs": {options[i][0]: wa[i] / sum(wa) for i in range(len(options))},
+                              "letra_texto": options[LETTERS.index(letra_a)][0] if letra_a else None})
+            rac.update({"rac_amostras": grupo, "rac_amostras_ms": ainfo.get("latency_ms"),
+                        "rac_amostras_lote": ainfo.get("lote"), "rac_semente": semente})
     if pointer:  # E4: mesmo prompt; a pointer head lê o fim de cada opção e a última posição
         ids2, offs = backend.offsets(prompt)
         if list(ids2) != list(ids):
@@ -193,6 +213,8 @@ def run_fingerprint(args, cases) -> dict:
         **({"exemplos_contexto": args.exemplos_contexto, "max_prompt_tokens": args.max_prompt_tokens}
            if getattr(args, "exemplos_contexto", 0) else {}),
         **({"raciocinio": args.raciocinio, "rac_leitura": "sufixos-v2"} if getattr(args, "raciocinio", 0) else {}),
+        **({"rac_amostras": args.raciocinio_amostras, "temperatura": args.temperatura, "top_p": args.top_p}
+           if getattr(args, "raciocinio", 0) and getattr(args, "raciocinio_amostras", 0) else {}),
     }
 
 
@@ -271,7 +293,9 @@ def cmd_run(args):
                         continue
                     row = predict_one(backend, template, case, order, generate=not args.no_generate,
                                       exemplos=exemplos.get(case.id, ()), max_prompt_tokens=args.max_prompt_tokens,
-                                      raciocinio=getattr(args, "raciocinio", 0))
+                                      raciocinio=getattr(args, "raciocinio", 0),
+                                      amostras=getattr(args, "raciocinio_amostras", 0),
+                                      temperatura=getattr(args, "temperatura", 1.0), top_p=getattr(args, "top_p", 0.95))
                     f.write(json.dumps(row, ensure_ascii=False) + "\n")
                     f.flush()
                 if (i + 1) % 25 == 0 or i + 1 == len(cases):
@@ -571,6 +595,10 @@ def main(argv=None):
     r.add_argument("--max-prompt-tokens", type=int, default=6000, help="H8: teto do prompt; corta exemplos se passar")
     r.add_argument("--raciocinio", type=int, default=0,
                    help="H11: o Lumi raciocina até N tokens no <think> antes da leitura das letras (só --backend hf)")
+    r.add_argument("--raciocinio-amostras", type=int, default=0,
+                   help="H11: além do raciocínio guloso, G raciocínios sorteados por caso (um grupo do GRPO)")
+    r.add_argument("--temperatura", type=float, default=1.0, help="H11: temperatura do sorteio")
+    r.add_argument("--top-p", type=float, default=0.95, help="H11: top_p do sorteio")
     r.add_argument("--out", required=True)
     r.set_defaults(func=cmd_run)
 

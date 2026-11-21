@@ -52,8 +52,17 @@ class Falso:
         self.prompt_gen, self.n, self.stop_ids = self.chamadas[0], n, stop_ids
         return [1] * 7, self.texto, {"latency_ms": 1500.0, "stop_type": self.parada}
 
+    def amostrar(self, ids, n_tok, n, temperatura, top_p, stop_ids, semente):
+        self.sorteio = dict(n_tok=n_tok, n=n, temperatura=temperatura, top_p=top_p, semente=semente)
+        textos = ["logo Alfa, answer A\n</think>", "Beta. So answer B.\n</think>", "sem fim"][:n]
+        return [([1] * (3 + i), t, "stop" if "</think>" in t else "limit") for i, t in enumerate(textos)], \
+            {"latency_ms": 4000.0, "lote": n}
+
     def readout(self, ids, cands):
         self.prompt_lido = "".join(map(chr, ids))
+        self.lidos = getattr(self, "lidos", []) + [self.prompt_lido]
+        if "Alfa, answer A" in self.prompt_lido:
+            return [-0.1, -2.0], {"latency_ms": 1.0}
         return [-2.0, -0.1], {"latency_ms": 1.0}
 
 
@@ -110,6 +119,23 @@ def test_predict_one_sem_raciocinio_igual_ao_de_antes(tmp_path):
     assert "raciocinio" not in row and be.prompt_lido.endswith("assistant\n<think></think>")
 
 
+def test_sorteio_le_cada_raciocinio_sorteado(tmp_path):
+    t, c = tpl(tmp_path), caso()
+    be = Falso("acho que é Beta\n</think>")
+    row = predict_one(be, t, c, "canonical", generate=False, raciocinio=64, amostras=3, temperatura=1.0, top_p=0.95)
+    assert be.sorteio["n"] == 3 and be.sorteio["n_tok"] == 64 and be.sorteio["temperatura"] == 1.0
+    g = row["rac_amostras"]
+    assert len(g) == 3 and row["rac_amostras_ms"] == 4000.0 and row["rac_amostras_lote"] == 3
+    assert max(g[0]["probs"], key=g[0]["probs"].get) == "a" and max(g[1]["probs"], key=g[1]["probs"].get) == "b"
+    assert [a["parada"] for a in g] == ["fim", "fim", "limit"]
+    assert [a["letra_texto"] for a in g] == ["a", "b", None]
+    assert any(x.endswith("assistant\n<think>sem fim</think>\n\n") for x in be.lidos)   # mesmo separador da principal
+    assert row["pred"] == "b" and row["rac_semente"] == predict_one(Falso("x</think>"), t, c, "canonical",
+                                                                  generate=False, raciocinio=8, amostras=1)["rac_semente"]
+    sem = predict_one(Falso("x</think>"), t, c, "canonical", generate=False, raciocinio=8)
+    assert "rac_amostras" not in sem
+
+
 def test_limite_sem_fechar_fica_registrado(tmp_path):
     t, c = tpl(tmp_path), caso()
     row = predict_one(Falso("bla bla", parada="limit"), t, c, "canonical", generate=False, raciocinio=8)
@@ -124,6 +150,9 @@ def test_impressao_muda_com_raciocinio(tmp_path):
     sem = run_fingerprint(a, [caso()])
     a.raciocinio = 256
     assert run_fingerprint(a, [caso()]) != sem and run_fingerprint(a, [caso()])["raciocinio"] == 256
+    com = run_fingerprint(a, [caso()])
+    a.raciocinio_amostras, a.temperatura, a.top_p = 4, 1.0, 0.95
+    assert run_fingerprint(a, [caso()]) != com and run_fingerprint(a, [caso()])["rac_amostras"] == 4
 
 
 def test_repeticao():
@@ -146,7 +175,11 @@ def test_relatorio_do_piloto(tmp_path):
         pil.append(_linha(i, held, "a", {"a": 0.8, "b": 0.2}, raciocinio=f"passo {i} então a",
                           rac_tokens=10 + i, rac_parada="fim" if i else "limit", rac_ms=2000.0,
                           rac_letra_texto="a" if i % 3 else None, rac_depois_think="\n\nA",
-                          rac_probs_sufixo={"cru": {"a": 0.3, "b": 0.7}, "nl2": {"a": 0.8, "b": 0.2}}))
+                          rac_probs_sufixo={"cru": {"a": 0.3, "b": 0.7}, "nl2": {"a": 0.8, "b": 0.2}},
+                          rac_amostras_ms=8000.0, rac_amostras_lote=4,
+                          rac_amostras=[{"raciocinio": "x y z w", "tokens": 5, "parada": "fim", "letra_texto": None,
+                                         "probs": ({"a": 0.9, "b": 0.1} if (j < 2 or i % 2) else {"a": 0.2, "b": 0.8})}
+                                        for j in range(4)]))
     for nome, rows in (("h4_log_felhen_dev", base), ("h11p_felhen_dev", pil)):
         (tmp_path / nome).mkdir()
         (tmp_path / nome / "predicoes.jsonl").write_text("\n".join(json.dumps(r) for r in rows), encoding="utf-8")
@@ -159,5 +192,10 @@ def test_relatorio_do_piloto(tmp_path):
     assert v["acc_texto"] == pytest.approx(2 / 3) and v["texto_disse"] == pytest.approx(2 / 3)
     assert v["sufixos"]["cru"]["acc"] == 0 and v["sufixos"]["nl2"]["acc"] == 1 and "nl" not in v["sufixos"]
     assert bruto["geral"]["horas_grpo"] == pytest.approx(1.0)           # 1800 × 2 s = 1 h
+    sv = v["sorteio"]                                                   # vistas: i = 0, 1, 2
+    assert sv["n"] == 3 and sv["g"] == 4
+    assert sv["misto"] == pytest.approx(2 / 3)                          # i = 0 e 2 misturam certo e errado
+    assert sv["com_sinal"] == pytest.approx(2 / 3) and sv["acc"] == pytest.approx(8 / 12)
+    assert bruto["geral"]["horas_grpo_sorteio"] == pytest.approx(1800 / 4 * 8 / 3600)   # 450 grupos × 8 s
     md = out.read_text(encoding="utf-8")
-    assert "passo 0" in md and "Onde ler a decisão" in md and '`"\\n\\nA"`' in md
+    assert "passo 0" in md and "Onde ler a decisão" in md and "Sorteio (como um grupo do GRPO)" in md and '`"\\n\\nA"`' in md

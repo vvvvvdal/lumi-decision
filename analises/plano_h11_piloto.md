@@ -57,3 +57,32 @@ O laço de GRPO fica para o próximo ciclo. Este piloto só responde se vale a p
   - extraímos a letra que o próprio texto diz (`letra_do_raciocinio`).
 - Pastas novas: `runs/h11p2_*`. O critério acima não muda e vale para a leitura principal. A acurácia pela
   letra do texto entra como informação.
+
+## Nota (21/11/2026): 2º teste curto e o braço com sorteio (registrado antes do piloto inteiro)
+
+**O 2º teste curto (`analises/h11p2_teste.md`, 4 casos vistos por fonte):**
+- com a leitura depois de `</think>\n\n`, a acurácia vai de 1,0 para 1,0 no Felhen e de 0,25 para 0,5 na
+  Telepatia;
+- 88% dos raciocínios fecham, a mediana é 3,2 s, e `\n` e `\n\n` empatam;
+- depois do raciocínio, o Lumi fica quase certo de tudo: NLL 0,000 no Felhen, e 2,14 na Telepatia, onde erra
+  com confiança. Esse é o problema que o RLCR ataca.
+
+**Por que sortear:** o GRPO não usa a geração gulosa. Ele sorteia G raciocínios por pergunta e aprende com a
+diferença de recompensa entre eles. Os cards do Lumi-Think e do Nemotron recomendam temperatura 1,0 e top_p
+0,95 com raciocínio.
+
+**Desenho:**
+- `--raciocinio-amostras 4 --temperatura 1.0 --top-p 0.95`;
+- 4 raciocínios sorteados por caso, num lote só, com semente fixa por caso;
+- cada um lido depois de `</think>\n\n`;
+- recompensa = −Brier dessa leitura.
+
+**Critério do sorteio (vale montar o GRPO?):**
+- **Raciocina sorteando:** pelo menos 80% das amostras fecham o `</think>`, e no máximo 10% degeneram.
+- **Há sinal para o GRPO:** em pelo menos 30% dos grupos, o desvio da recompensa é maior que 0,01. Abaixo
+  disso, a maioria dos casos não ensina nada ao GRPO.
+- **Cabe no orçamento:** com o tempo mediano por grupo, 2400 raciocínios (600 grupos de 4) ficam abaixo de
+  4 h de geração.
+- **Só informativo:**
+  - a fração de grupos mistos (decisão certa e errada no mesmo grupo);
+  - a acurácia, o ECE e o NLL das amostras.

@@ -63,6 +63,7 @@ def recorte(base: list[dict], pil: list[dict]) -> dict:
         "acc_texto": float(np.mean([y.get("rac_letra_texto") == y["gold"] for y in com])),
         "texto_disse": float(np.mean([y.get("rac_letra_texto") is not None for y in com])),
         "sufixos": por_sufixo(com),
+        "sorteio": sorteio(com),
     }
 
 
@@ -76,6 +77,37 @@ def por_sufixo(com: list[dict]) -> dict:
                 for y in com if nome in y.get("rac_probs_sufixo", {})]
         out[nome] = {"n": len(rows), "acc": metrics.accuracy(rows), "nll": metrics.nll(rows)}
     return out
+
+
+def recompensa_brier(probs: dict, gold: str) -> float:
+    """Recompensa do GRPO no estilo RLCR: menos o Brier multiclasse (0 = perfeito, −2 = pior)."""
+    return -sum((p - (k == gold)) ** 2 for k, p in probs.items())
+
+
+def sorteio(com: list[dict]) -> dict:
+    """Os G raciocínios sorteados de cada caso, vistos como um grupo de rollouts do GRPO.
+    - misto: o grupo tem decisão certa E errada (o GRPO aprende mais com esses);
+    - desvio: desvio-padrão da recompensa Brier dentro do grupo (zero = nenhum sinal para o GRPO)."""
+    grupos = [y for y in com if y.get("rac_amostras")]
+    if not grupos:
+        return {"n": 0}
+    amostras, mistos, desvios = [], [], []
+    for y in grupos:
+        rows = [{**a, "gold": y["gold"], "pred": max(a["probs"], key=a["probs"].get)} for a in y["rac_amostras"]]
+        amostras += rows
+        certos = [r["pred"] == r["gold"] for r in rows]
+        mistos.append(any(certos) and not all(certos))
+        desvios.append(float(np.std([recompensa_brier(r["probs"], r["gold"]) for r in rows])))
+    return {
+        "n": len(grupos), "g": len(grupos[0]["rac_amostras"]),
+        "acc": metrics.accuracy(amostras), "ece": metrics.ece(amostras), "nll": metrics.nll(amostras),
+        "fecha": float(np.mean([r["parada"] == "fim" for r in amostras])),
+        "degenerado": float(np.mean([degenerado(r) for r in amostras])),
+        "misto": float(np.mean(mistos)), "desvio_med": float(np.median(desvios)),
+        "com_sinal": float(np.mean([d > 0.01 for d in desvios])),
+        "ms_grupo_med": float(np.median([y["rac_amostras_ms"] for y in grupos])),
+        "lote": sorted({y.get("rac_amostras_lote") for y in grupos}),
+    }
 
 
 def main(argv=None):
@@ -95,6 +127,9 @@ def main(argv=None):
     leit = ["| fonte | recorte | n | acc sem raciocínio | acc pela letra do texto (texto disse) "
             "| colada no </think>: acc / NLL | + \\n: acc / NLL | + \\n\\n: acc / NLL |",
             "|---|---|---:|---:|---|---|---|---|"]
+    sort = ["| fonte | recorte | grupos × G | acc | ECE | NLL | fecha | degenerado | grupos mistos | desvio da recompensa "
+            "(mediana) | grupos com sinal | s por grupo |",
+            "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
     todos, exemplos, bruto = [], [], {}
     for fonte in a.fontes.split(","):
         pp, pb = runs / f"{a.piloto}_{fonte}_dev", runs / f"{a.base}_{fonte}_dev"
@@ -118,6 +153,11 @@ def main(argv=None):
                    for k in ("cru", "nl", "nl2")]
             leit.append(f"| {fonte} | {nome} | {m['n']} | {m['acc_sem']:.3f} | {m['acc_texto']:.3f} "
                         f"({m['texto_disse']:.0%}) | " + " | ".join(suf) + " |")
+            g = m["sorteio"]
+            if g["n"]:
+                sort.append(f"| {fonte} | {nome} | {g['n']} × {g['g']} | {g['acc']:.3f} | {g['ece']:.3f} | {g['nll']:.3f} | "
+                            f"{g['fecha']:.0%} | {g['degenerado']:.0%} | {g['misto']:.0%} | {g['desvio_med']:.3f} | "
+                            f"{g['com_sinal']:.0%} | {g['ms_grupo_med'] / 1000:.1f} |")
         for r in pil[: a.exemplos]:
             texto = r["raciocinio"].strip()
             exemplos.append(f"**{fonte} · {r['family']} · {'reservada' if r['held_out'] else 'vista'} · "
@@ -135,6 +175,11 @@ def main(argv=None):
         "s_mediano": ms / 1000,
         "horas_grpo": a.rollouts * ms / 3.6e6,
     }
+    sg = sorteio(todos)
+    if sg["n"]:
+        resumo["sorteio"] = {k: sg[k] for k in ("n", "g", "fecha", "degenerado", "misto", "com_sinal", "lote")}
+        resumo["s_grupo_mediano"] = sg["ms_grupo_med"] / 1000
+        resumo["horas_grpo_sorteio"] = a.rollouts / sg["g"] * sg["ms_grupo_med"] / 3.6e6
     bruto["geral"] = resumo
     texto = ("\n".join(linhas)
              + f"\n\nGeral: {resumo['n']} raciocínios; fecharam o </think> antes do limite: {resumo['fechou_think']:.0%}; "
@@ -145,7 +190,15 @@ def main(argv=None):
              "\n## Onde ler a decisão depois do raciocínio\n\n" + "\n".join(leit) + "\n"
              "\nA tabela de cima usa a leitura principal (`+ \\n\\n`). Letra do texto = a última letra que o "
              "raciocínio diz ser a resposta (\"answer N\"); quando o texto não diz, conta como erro.\n"
-             "\n## Exemplos\n\n" + "\n\n".join(exemplos) + "\n")
+             + (("\n## Sorteio (como um grupo do GRPO)\n\n" + "\n".join(sort) + "\n"
+                 f"\nGeral do sorteio: {sg['n']} grupos de {sg['g']}; fecharam {sg['fecha']:.0%}; degenerados "
+                 f"{sg['degenerado']:.0%}; grupos mistos {sg['misto']:.0%}; com sinal {sg['com_sinal']:.0%}; "
+                 f"{resumo['s_grupo_mediano']:.1f} s por grupo (lote {sg['lote']}); GRPO com {a.rollouts} raciocínios "
+                 f"≈ {resumo['horas_grpo_sorteio']:.1f} h só de geração.\n"
+                 "\nRecompensa = −Brier da leitura depois do raciocínio sorteado. Misto = o grupo tem decisão certa e "
+                 "errada. Com sinal = desvio da recompensa no grupo acima de 0,01 (sem isso o GRPO não aprende nada "
+                 "daquele caso).\n") if sg["n"] else "")
+             + "\n## Exemplos\n\n" + "\n\n".join(exemplos) + "\n")
     print(texto)
     if a.out:
         Path(a.out).write_text(texto, encoding="utf-8")

@@ -198,6 +198,43 @@ class HFBackend:
         text = self.tok.decode([t for t in new if t not in self.eos_ids], skip_special_tokens=False)
         return new, text, {"latency_ms": ms, "stop_type": stop}
 
+    def _cortar(self, new, stop_ids):
+        """Corta uma linha gerada no primeiro token de parada (o resto é preenchimento do lote)."""
+        for j, t in enumerate(new):
+            if t in stop_ids:
+                return new[: j + 1], "stop"
+            if t in self.eos_ids:
+                return new[: j + 1], "eos"
+        return new, "limit"
+
+    @torch.inference_mode()
+    def amostrar(self, prompt_ids, max_new_tokens, n, temperatura=1.0, top_p=0.95, stop_ids=None, semente=0):
+        """H11: `n` gerações SORTEADAS do mesmo prompt (como os rollouts de um grupo do GRPO), num lote só.
+        Devolve ([(tokens, texto, parada), ...], info). Se o lote falhar, sorteia uma de cada vez (info["lote"])."""
+        stop_ids = list(stop_ids or [])
+        ids = torch.tensor([prompt_ids], device=self.device)
+        kw = dict(max_new_tokens=max_new_tokens, do_sample=True, temperature=temperatura, top_p=top_p, top_k=0,
+                  eos_token_id=self.eos_ids + stop_ids, pad_token_id=self.pad_id)
+        torch.manual_seed(semente)
+        _sync()
+        t0 = time.perf_counter()
+        try:
+            out = self.model.generate(input_ids=ids, attention_mask=torch.ones_like(ids), num_return_sequences=n, **kw)
+            linhas, lote = [out[i, len(prompt_ids):].tolist() for i in range(n)], n
+        except (RuntimeError, ValueError):
+            linhas, lote = [], 1
+            for _ in range(n):
+                o = self.model.generate(input_ids=ids, attention_mask=torch.ones_like(ids), **kw)
+                linhas.append(o[0, len(prompt_ids):].tolist())
+        _sync()
+        ms = (time.perf_counter() - t0) * 1000
+        res = []
+        for new in linhas:
+            new, parada = self._cortar(new, stop_ids)
+            texto = self.tok.decode([t for t in new if t not in self.eos_ids], skip_special_tokens=False)
+            res.append((new, texto, parada))
+        return res, {"latency_ms": ms, "lote": lote}
+
     @torch.inference_mode()
     def greedy_no_cache(self, prompt_ids, n_tokens=4) -> list[int]:
         """Geração gulosa recalculando tudo a cada passo (sem cache). Referência para o cache híbrido."""
