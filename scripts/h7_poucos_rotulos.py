@@ -81,6 +81,8 @@ def uma_fonte(calib: list[dict], dev: list[dict], ks: list[int], reps: int, risc
     dev_f = {f: [r for r in res_dev if r["family"] == f] for f in fams}
     cal_f = {f: [r for r in calib if r["held_out"] and r["family"] == f] for f in fams}
     out = {"global": medir(aplicar(res_dev, T_g, tau_g)), "T_global": T_g, "tau_global": tau_g,
+           "sem_T": medir(aplicar(res_dev, 1.0, 0.0)),  # probabilidades cruas, responde tudo
+
            "familias": {f: {"n_dev": len(dev_f[f]), "n_calib": len(cal_f[f])} for f in fams}}
     ora = []
     for f in fams:
