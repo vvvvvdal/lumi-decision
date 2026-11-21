@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import random
+import re
 import string
 from pathlib import Path
 
@@ -159,6 +160,23 @@ def com_raciocinio(prompt_gen: str, prompt_off: str, texto: str) -> str:
         raise ValueError("o prompt de sempre não tem </think>")
     sufixo = prompt_off.rsplit(FIM_THINK, 1)[1]
     return prompt_gen + texto.split(FIM_THINK, 1)[0] + FIM_THINK + sufixo
+
+
+# H11: depois do `</think>` o Lumi escreve um separador antes da resposta. O 1º teste curto (job 37782) leu
+# a letra colada no `</think>` e saiu quase uniforme. Agora lemos as três variantes; a principal é "nl2".
+SUFIXOS_RAC = {"cru": "", "nl": "\n", "nl2": "\n\n"}
+SUFIXO_RAC_PRINCIPAL = "nl2"
+
+_RESPOSTA_RE = re.compile(r"(?:answer|resposta|op[çc][ãa]o|option)\W{0,4}(?:is\W{0,3}|é\W{0,3})?"
+                          r"(?:option\W{0,3}|op[çc][ãa]o\W{0,3}|letra\W{0,3})?\**\(?([A-Z])\b", re.IGNORECASE)
+
+
+def letra_do_raciocinio(texto: str, n: int) -> str | None:
+    """H11: a última letra que o raciocínio diz ser a resposta ("answer N", "That's option E", "Resposta: B").
+    Só letras entre as `n` opções; None se o texto não disser."""
+    achadas = [m[1].upper() for m in _RESPOSTA_RE.finditer(texto.split(FIM_THINK, 1)[0])]
+    validas = [x for x in achadas if x.isupper() and LETTERS.index(x) < n]
+    return validas[-1] if validas else None
 
 
 def candidate_tokens(tokenize, prompt: str, n: int) -> tuple[list[int], list[int]]:

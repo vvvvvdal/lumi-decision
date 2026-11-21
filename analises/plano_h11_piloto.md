@@ -41,3 +41,19 @@ O laço de GRPO fica para o próximo ciclo. Este piloto só responde se vale a p
   família, o ECE é só indicativo.
 - **Se não raciocinar:** o plano B do próximo ciclo é partir de um Lumi com raciocínio
   (`gustavobarrosss/t6-lumi-4b`).
+
+## Nota (21/11/2026): 1º teste curto (job 37782) e a correção da leitura
+
+- **O Lumi raciocina e acerta no texto.** Nos 4 casos vistos do Felhen, o raciocínio termina com a letra
+  certa ("So answer N", "That's option E", "So answer F", "Thus answer: T"). 75% fecharam o `</think>`, nada
+  degenerou, e o tempo mediano foi de 3,9 s.
+- **A leitura colada no `</think>` quebrou.** A acurácia vista caiu para 0, e o NLL do Felhen (3,23) é
+  praticamente o de um chute uniforme entre 25 opções (ln 25 = 3,22). Com raciocínio, o Lumi escreve um
+  separador depois do `</think>` antes da resposta, então ler a letra colada é ler fora do lugar.
+- **Correção (antes do 2º teste):**
+  - a leitura principal passa a ser depois de `</think>\n\n`;
+  - também lemos as variantes colada e `\n`, para comparar;
+  - gravamos os 12 tokens que o Lumi escreve sozinho depois do `</think>`;
+  - extraímos a letra que o próprio texto diz (`letra_do_raciocinio`).
+- Pastas novas: `runs/h11p2_*`. O critério acima não muda e vale para a leitura principal. A acurácia pela
+  letra do texto entra como informação.

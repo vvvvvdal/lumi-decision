@@ -25,7 +25,8 @@ import numpy as np
 
 from . import REPO_ROOT, metrics
 from .data import ARTIFACTS_DIR, SPLITS_CONFIG, check_integrity, load_cases, load_config
-from .prompts import (FIM_THINK, LETTERS, PROMPT_VERSION, candidate_tokens, com_raciocinio, load_template,
+from .prompts import (FIM_THINK, LETTERS, PROMPT_VERSION, SUFIXO_RAC_PRINCIPAL, SUFIXOS_RAC, candidate_tokens,
+                      com_raciocinio, letra_do_raciocinio, load_template,
                       option_char_ends, option_token_positions, order_options, prompt_pensando, render, with_abstain)
 
 GEN_RE = re.compile(r"\s*(?:\*\*)?([A-Z])(?:\*\*)?[.)]?\s*")
@@ -100,11 +101,31 @@ def predict_one(backend, template, case, order, generate=True, max_new_tokens=16
         fim = backend.tokenize(FIM_THINK)
         toks, texto, ginfo = backend.generate(backend.tokenize(p_gen), raciocinio,
                                               stop_ids=fim if len(fim) == 1 else None)
-        prompt = com_raciocinio(p_gen, prompt, texto)
-        ids, cands = candidate_tokens(backend.tokenize, prompt, len(options))
+        fechado = com_raciocinio(p_gen, prompt, texto)
+        letra = letra_do_raciocinio(texto, len(options))
         rac = {"raciocinio": texto.split(FIM_THINK, 1)[0], "rac_tokens": len(toks),
                "rac_parada": "fim" if (ginfo.get("stop_type") == "stop" or FIM_THINK in texto) else ginfo.get("stop_type"),
-               "rac_ms": ginfo.get("latency_ms")}
+               "rac_ms": ginfo.get("latency_ms"),
+               "rac_letra_texto": options[LETTERS.index(letra)][0] if letra else None,
+               "rac_probs_sufixo": {}}
+        # o que o Lumi escreve sozinho logo depois do </think> (para achar onde a letra sai de verdade)
+        _, depois, _ = backend.generate(backend.tokenize(fechado), 12)
+        rac["rac_depois_think"] = depois
+        escolhido = None
+        for nome, suf in SUFIXOS_RAC.items():
+            try:
+                i2, c2 = candidate_tokens(backend.tokenize, fechado + suf, len(options))
+            except ValueError:
+                continue  # a letra não é um token só depois desse separador
+            l2, _ = backend.readout(i2, c2)
+            m2 = max(l2)
+            w2 = [math.exp(x - m2) for x in l2]
+            rac["rac_probs_sufixo"][nome] = {options[i][0]: w2[i] / sum(w2) for i in range(len(options))}
+            if escolhido is None or nome == SUFIXO_RAC_PRINCIPAL:
+                escolhido, prompt, ids, cands = nome, fechado + suf, i2, c2
+        if escolhido is None:
+            raise ValueError(f"{case.id}: nenhuma variante de separador depois do </think> serve para ler as letras")
+        rac["rac_sufixo"] = escolhido
     if pointer:  # E4: mesmo prompt; a pointer head lê o fim de cada opção e a última posição
         ids2, offs = backend.offsets(prompt)
         if list(ids2) != list(ids):
@@ -171,7 +192,7 @@ def run_fingerprint(args, cases) -> dict:
         **({"sem_ponteiro": True} if getattr(args, "sem_ponteiro", False) else {}),
         **({"exemplos_contexto": args.exemplos_contexto, "max_prompt_tokens": args.max_prompt_tokens}
            if getattr(args, "exemplos_contexto", 0) else {}),
-        **({"raciocinio": args.raciocinio} if getattr(args, "raciocinio", 0) else {}),
+        **({"raciocinio": args.raciocinio, "rac_leitura": "sufixos-v2"} if getattr(args, "raciocinio", 0) else {}),
     }
 
 

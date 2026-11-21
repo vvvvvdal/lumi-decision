@@ -59,7 +59,23 @@ def recorte(base: list[dict], pil: list[dict]) -> dict:
         "limite": float(np.mean([y["rac_parada"] == "limit" for y in com])),
         "degenerado": float(np.mean([degenerado(y) for y in com])),
         "ms_med": float(np.median([y["rac_ms"] for y in com])),
+        # a letra que o próprio texto do raciocínio diz ("answer N"); sem letra conta como erro
+        "acc_texto": float(np.mean([y.get("rac_letra_texto") == y["gold"] for y in com])),
+        "texto_disse": float(np.mean([y.get("rac_letra_texto") is not None for y in com])),
+        "sufixos": por_sufixo(com),
     }
+
+
+def por_sufixo(com: list[dict]) -> dict:
+    """Acurácia e NLL da leitura das letras com cada separador depois do </think> (cru, \\n, \\n\\n)."""
+    nomes = sorted({k for y in com for k in y.get("rac_probs_sufixo", {})})
+    out = {}
+    for nome in nomes:
+        rows = [{**y, "probs": y["rac_probs_sufixo"][nome],
+                 "pred": max(y["rac_probs_sufixo"][nome], key=y["rac_probs_sufixo"][nome].get)}
+                for y in com if nome in y.get("rac_probs_sufixo", {})]
+        out[nome] = {"n": len(rows), "acc": metrics.accuracy(rows), "nll": metrics.nll(rows)}
+    return out
 
 
 def main(argv=None):
@@ -76,6 +92,9 @@ def main(argv=None):
     linhas = ["| fonte | recorte | n | acc sem → com | ECE sem → com | NLL sem → com | decisão mudou | tokens (mediana) "
               "| bateu no limite | degenerado | s por raciocínio |",
               "|---|---|---:|---|---|---|---:|---:|---:|---:|---:|"]
+    leit = ["| fonte | recorte | n | acc sem raciocínio | acc pela letra do texto (texto disse) "
+            "| colada no </think>: acc / NLL | + \\n: acc / NLL | + \\n\\n: acc / NLL |",
+            "|---|---|---:|---:|---|---|---|---|"]
     todos, exemplos, bruto = [], [], {}
     for fonte in a.fontes.split(","):
         pp, pb = runs / f"{a.piloto}_{fonte}_dev", runs / f"{a.base}_{fonte}_dev"
@@ -95,10 +114,16 @@ def main(argv=None):
                 f"{m['ece_sem']:.3f} → {m['ece_com']:.3f} | {m['nll_sem']:.3f} → {m['nll_com']:.3f} | "
                 f"{m['mudou']:.0%} | {m['tokens_med']:.0f} | {m['limite']:.0%} | {m['degenerado']:.0%} | "
                 f"{m['ms_med'] / 1000:.1f} |")
+            suf = [f"{m['sufixos'][k]['acc']:.3f} / {m['sufixos'][k]['nll']:.3f}" if k in m["sufixos"] else "—"
+                   for k in ("cru", "nl", "nl2")]
+            leit.append(f"| {fonte} | {nome} | {m['n']} | {m['acc_sem']:.3f} | {m['acc_texto']:.3f} "
+                        f"({m['texto_disse']:.0%}) | " + " | ".join(suf) + " |")
         for r in pil[: a.exemplos]:
             texto = r["raciocinio"].strip()
             exemplos.append(f"**{fonte} · {r['family']} · {'reservada' if r['held_out'] else 'vista'} · "
-                            f"gabarito {r['gold']} · leu {r['pred']} · {r['rac_tokens']} tokens, {r['rac_parada']}**\n\n"
+                            f"gabarito {r['gold']} · leu {r['pred']} · texto disse {r.get('rac_letra_texto')} · "
+                            f"{r['rac_tokens']} tokens, {r['rac_parada']} · depois do </think>: "
+                            f"`{json.dumps(r.get('rac_depois_think'), ensure_ascii=False)}`**\n\n"
                             f"> {(texto[:700] + ' […]') if len(texto) > 700 else texto or '(vazio)'}".replace("\n", "\n> "))
     if not todos:
         raise SystemExit("nenhuma predição com raciocínio encontrada")
@@ -117,6 +142,9 @@ def main(argv=None):
              f"GRPO com {a.rollouts} raciocínios ≈ {resumo['horas_grpo']:.1f} h só de geração (lote 1).\n"
              "\nSem = leitura de sempre (`<think></think>` vazio); com = leitura depois do raciocínio. Mesmos casos, "
              "ordem canônica. Poucos casos por recorte: o ECE aqui é só indicativo.\n"
+             "\n## Onde ler a decisão depois do raciocínio\n\n" + "\n".join(leit) + "\n"
+             "\nA tabela de cima usa a leitura principal (`+ \\n\\n`). Letra do texto = a última letra que o "
+             "raciocínio diz ser a resposta (\"answer N\"); quando o texto não diz, conta como erro.\n"
              "\n## Exemplos\n\n" + "\n\n".join(exemplos) + "\n")
     print(texto)
     if a.out:
