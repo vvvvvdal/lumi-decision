@@ -73,6 +73,7 @@ def main(argv=None):
     p.add_argument("--risco", type=float, default=0.10)
     p.add_argument("--min-aceitos", type=int, default=5)
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--excluir-tambem", default="", help="prefixos de runs cujos grupos de treino também saem")
     p.add_argument("--out", default="")
     a = p.parse_args(argv)
     runs, ks = Path(a.runs), [int(k) for k in a.ks.split(",")]
@@ -91,6 +92,8 @@ def main(argv=None):
                 print(f">> falta {runs / nn / 'adapt_grupos.json'}; pulei semente {s}")
                 continue
             fora = grupos_de_treino(runs, nn)
+            for outro in filter(None, a.excluir_tambem.split(",")):
+                fora |= grupos_de_treino(runs, nome(outro, s))
             dados = {}
             for braco, nm in (("base", nb), ("novo", nn)):
                 pc, pd = runs / f"{nm}_{fonte}_calib", runs / f"{nm}_{fonte}_dev"

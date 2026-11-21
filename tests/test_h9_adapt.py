@@ -70,10 +70,37 @@ def test_replay_rodizio_entre_familias_e_deterministico():
 
 def test_training_set_for_com_replay(monkeypatch):
     vistos = [c(i, "vista", "train", held=False) for i in range(40)]
-    monkeypatch.setattr(lora, "build_adapt_set", lambda fams, k, seed: [c(i, "nova", "dev") for i in range(k)])
+    monkeypatch.setattr(lora, "build_adapt_set", lambda fams, k, seed, **kw: [c(i, "nova", "dev") for i in range(k)])
     monkeypatch.setattr(lora, "build_training_set", lambda *a, **kw: vistos)
     cfg = lora.TrainConfig(adapt_familias=["s:nova"], adapt_k=6, adapt_replay=1.0)
     out = lora.training_set_for(cfg)
     assert sum(x.held_out for x in out) == 6 and sum(not x.held_out for x in out) == 6
     cfg0 = lora.TrainConfig(adapt_familias=["s:nova"], adapt_k=6)
     assert all(x.held_out for x in lora.training_set_for(cfg0))  # sem replay = H9 igual
+
+
+def test_duvida_escolhe_na_faixa_de_menor_confianca():
+    # comtrain: 30 grupos no train; confiança cresce com o índice (g0 = mais dúvida)
+    duv = {f"comtrain:train:g{i}": 0.3 + 0.02 * i for i in range(30)}
+    out = lora.build_adapt_set(["s:comtrain"], 4, loader=loader, duvida=duv, faixa=3)
+    grupos = {x.group_id for x in out}
+    assert len(grupos) == 4 and grupos <= {f"comtrain:train:g{i}" for i in range(12)}  # só os 3×4 mais duvidosos
+    # sem predição para o pool inteiro: só entram os grupos com predição
+    poucos = {f"comtrain:train:g{i}": 0.5 for i in range(5)}
+    with pytest.raises(ValueError):
+        lora.build_adapt_set(["s:comtrain"], 4, loader=loader, duvida=poucos, faixa=3)
+
+
+def test_load_duvida_media_por_grupo(tmp_path):
+    import json
+    rows = [{"group_id": "g1", "probs": {"a": 0.9, "b": 0.1}}, {"group_id": "g1", "probs": {"a": 0.3, "b": 0.7}},
+            {"group_id": "g2", "probs": {"a": 0.5, "b": 0.5}}]
+    (tmp_path / "predicoes.jsonl").write_text("\n".join(json.dumps(r) for r in rows), encoding="utf-8")
+    d = lora.load_duvida([str(tmp_path)])
+    assert d == pytest.approx({"g1": 0.8, "g2": 0.5})
+
+
+def test_training_set_for_duvida_exige_preds():
+    cfg = lora.TrainConfig(adapt_familias=["s:nova"], adapt_k=6, adapt_selecao="duvida")
+    with pytest.raises(ValueError):
+        lora.training_set_for(cfg)

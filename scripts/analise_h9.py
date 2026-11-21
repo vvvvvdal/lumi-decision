@@ -53,6 +53,8 @@ def main(argv=None):
     p.add_argument("--fontes", default="felhen,telepatia")
     p.add_argument("--risco", type=float, default=0.10)
     p.add_argument("--n-boot", type=int, default=2000)
+    p.add_argument("--excluir-tambem", default="",
+                   help="runs cujos grupos de treino também saem da avaliação (comparar braços com grupos diferentes)")
     p.add_argument("--out", default="")
     a = p.parse_args(argv)
     runs = Path(a.runs)
@@ -65,6 +67,8 @@ def main(argv=None):
             print(f">> falta {runs / novo / 'adapt_grupos.json'}; pulei {novo}")
             continue
         fora = grupos_de_treino(runs, novo)
+        for outro in filter(None, a.excluir_tambem.split(",")):
+            fora |= grupos_de_treino(runs, outro)
         for fonte in a.fontes.split(","):
             pb, pn = runs / f"{a.base}_{fonte}_dev", runs / f"{novo}_{fonte}_dev"
             if not ((pb / "predicoes.jsonl").exists() and (pn / "predicoes.jsonl").exists()):

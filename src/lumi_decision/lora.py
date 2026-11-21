@@ -80,12 +80,29 @@ def parse_source_caps(items) -> dict:
     return out
 
 
-def build_adapt_set(familias, k: int, seed: int = 0, loader=None) -> list[Case]:
+def load_duvida(pastas) -> dict[str, float]:
+    """H9a: {group_id: confiança média (prob. máxima) do modelo de partida}, das `predicoes.jsonl` de cada pasta.
+    Menor = mais dúvida."""
+    acc = {}
+    for d in pastas:
+        for linha in (Path(d) / "predicoes.jsonl").read_text(encoding="utf-8").splitlines():
+            if linha.strip():
+                r = json.loads(linha)
+                acc.setdefault(r["group_id"], []).append(max(r["probs"].values()))
+    return {g: sum(v) / len(v) for g, v in acc.items()}
+
+
+def build_adapt_set(familias, k: int, seed: int = 0, loader=None, duvida: dict | None = None,
+                    faixa: int = 3) -> list[Case]:
     """H9: k GRUPOS rotulados de cada família RESERVADA (`fonte:família`), para continuar um LoRA nela.
 
     Pool: os casos da família fora do `dev`/`test` (Felhen: o `train` das reservadas, nunca usado). Se não houver
     nenhum (Telepatia: as reservadas só existem no `dev`), usa o `dev`; aí esses grupos precisam sair da
-    avaliação (`adapt_grupos.json`, lido por `scripts/analise_h9.py`). Sorteio por hash, determinístico."""
+    avaliação (`adapt_grupos.json`, lido por `scripts/analise_h9.py`). Sorteio por hash, determinístico.
+
+    H9a (`duvida` = {group_id: confiança do modelo de partida}): só entram grupos com predição; pega a faixa dos
+    `faixa`·k grupos de MENOR confiança e sorteia k dentro dela (não só os mais duvidosos, que tendem a ser
+    ambíguos ou com rótulo ruim)."""
     loader = loader or (lambda src: load_cases(src, load_config()))
     cache, out = {}, []
     for item in familias:
@@ -98,7 +115,13 @@ def build_adapt_set(familias, k: int, seed: int = 0, loader=None) -> list[Case]:
         if not all(c.held_out for c in da_fam):
             raise ValueError(f"{item} não é família reservada")
         pool = [c for c in da_fam if c.split not in ("dev", "test")] or [c for c in da_fam if c.split == "dev"]
-        grupos = sorted({c.group_id for c in pool}, key=lambda g: hashlib.sha256(f"{seed}:{g}".encode()).hexdigest())
+        h = lambda g: hashlib.sha256(f"{seed}:{g}".encode()).hexdigest()  # noqa: E731
+        grupos = sorted({c.group_id for c in pool}, key=h)
+        if duvida is not None:
+            com = sorted((g for g in grupos if g in duvida), key=lambda g: (duvida[g], h(g)))
+            if len(com) < faixa * k:
+                raise ValueError(f"{item}: só {len(com)} grupos com predição para a faixa de {faixa}×{k}")
+            grupos = sorted(com[: faixa * k], key=h)
         if len(grupos) < k:
             raise ValueError(f"{item}: só {len(grupos)} grupos para k = {k}")
         esc = set(grupos[:k])
@@ -133,7 +156,12 @@ def training_set_for(cfg: "TrainConfig") -> list[Case]:
     """O conjunto de treino exatamente como o `train` monta (usado também pela contagem de orçamento)."""
     seed = cfg.seed if cfg.data_seed < 0 else cfg.data_seed
     if cfg.adapt_k > 0:  # H9: só os k grupos rotulados das famílias reservadas
-        adapt = build_adapt_set(cfg.adapt_familias, cfg.adapt_k, seed)
+        if cfg.adapt_selecao not in ("sorteio", "duvida"):
+            raise ValueError(f"adapt_selecao inválida: {cfg.adapt_selecao}")
+        if cfg.adapt_selecao == "duvida" and not cfg.adapt_preds:
+            raise ValueError("adapt_selecao=duvida precisa de --adapt-preds")
+        duv = load_duvida(cfg.adapt_preds) if cfg.adapt_selecao == "duvida" else None
+        adapt = build_adapt_set(cfg.adapt_familias, cfg.adapt_k, seed, duvida=duv, faixa=cfg.adapt_faixa)
         if cfg.adapt_replay > 0:  # H9r: + casos das famílias vistas (treino original), contra o esquecimento
             vistos = build_training_set(cfg.sources, cfg.cap_per_family, seed, parse_source_caps(cfg.source_caps))
             adapt = adapt + replay_set(vistos, round(cfg.adapt_replay * len(adapt)), seed)
@@ -521,6 +549,9 @@ class TrainConfig:
     adapt_familias: list = field(default_factory=list)  # H9: fonte:família reservadas para o treino curto
     adapt_k: int = 0            # H9: > 0 troca o treino por k grupos rotulados de cada família de adapt_familias
     adapt_replay: float = 0.0   # H9r: com adapt_k > 0, junta round(adapt_replay × n_adapt) casos já vistos
+    adapt_selecao: str = "sorteio"  # H9a: sorteio | duvida (faixa de menor confiança do modelo de partida)
+    adapt_preds: list = field(default_factory=list)  # H9a: pastas com predicoes.jsonl do modelo de partida no pool
+    adapt_faixa: int = 3        # H9a: a faixa de dúvida tem adapt_faixa × k grupos
 
 
 class _Stop:
