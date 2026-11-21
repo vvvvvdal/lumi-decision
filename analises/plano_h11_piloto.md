@@ -86,3 +86,19 @@ diferença de recompensa entre eles. Os cards do Lumi-Think e do Nemotron recome
 - **Só informativo:**
   - a fração de grupos mistos (decisão certa e errada no mesmo grupo);
   - a acurácia, o ECE e o NLL das amostras.
+
+## Nota (21/11/2026): 3º teste curto (sorteio) e o orçamento do piloto inteiro
+
+**O 3º teste curto (`analises/h11p2_teste.md`, 4 casos vistos por fonte, G = 4, N = 256):**
+- o lote de 4 funcionou: 5,6 s por grupo, e o GRPO projetado fica em cerca de 0,9 h;
+- há sinal de sobra: 88% dos grupos têm desvio da recompensa maior que 0,01, e 75% são mistos;
+- nenhuma amostra degenerou;
+- **mas só 56% das amostras fecharam o `</think>` em 256 tokens**, contra 88% no guloso. Sorteando, o Lumi
+  raciocina mais longo.
+
+**Mudança antes do piloto inteiro:** N passa de 256 para **512** (`sbatch slurm/h11_piloto.sbatch runs/h4_log
+512`). O critério não muda. A mudança só dá orçamento para o raciocínio sorteado terminar.
+
+**Observação:** o Lumi escreveu `"\nB"` depois do `</think>`, então o separador natural parece ser `\n`, não
+`\n\n`. A leitura principal continua `\n\n`, como registrado, e a tabela de variantes do piloto mostra se isso
+muda alguma coisa. O GRPO do próximo ciclo escolhe a leitura com esses dados.
