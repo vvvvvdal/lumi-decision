@@ -129,12 +129,36 @@ def exemplo_turnos(ex: Case) -> list[dict]:
     return [{"role": "user", "content": user_message(ex, opts)}, {"role": "assistant", "content": letra}]
 
 
-def render(template, case: Case, options: list[tuple[str, str]], exemplos=()) -> str:
+def render(template, case: Case, options: list[tuple[str, str]], exemplos=(), pensar: bool = False) -> str:
     """Prompt do caso. H8: `exemplos` (casos com gabarito da mesma família) entram antes, como turnos
-    user/assistant já respondidos. Sem exemplos, o prompt é exatamente o de sempre."""
+    user/assistant já respondidos. Sem exemplos, o prompt é exatamente o de sempre.
+    H11: `pensar=True` pede ao template o modo com raciocínio (`<think>` aberto)."""
     msgs = [t for ex in exemplos for t in exemplo_turnos(ex)]
     msgs.append({"role": "user", "content": user_message(case, options)})
-    return template.render(messages=msgs, add_generation_prompt=True, enable_thinking=False)
+    return template.render(messages=msgs, add_generation_prompt=True, enable_thinking=pensar)
+
+
+FIM_THINK = "</think>"
+
+
+def prompt_pensando(prompt_on: str, prompt_off: str) -> str:
+    """H11: prompt em que o Lumi começa a raciocinar. Se o template ignorar `enable_thinking=True` (os dois
+    prompts iguais), abre o `<think>` tirando o `</think>` final do prompt de sempre."""
+    if prompt_on != prompt_off:
+        return prompt_on
+    if prompt_off.endswith(FIM_THINK):
+        return prompt_off[: -len(FIM_THINK)]
+    raise ValueError("o prompt não termina em </think>; não sei onde abrir o raciocínio")
+
+
+def com_raciocinio(prompt_gen: str, prompt_off: str, texto: str) -> str:
+    """H11: prompt de leitura depois do raciocínio. Corta o texto gerado no primeiro `</think>`, fecha o
+    raciocínio e termina igual ao prompt de sempre (o que vem depois do `</think>` nele), para a letra ser
+    lida na mesma fronteira."""
+    if FIM_THINK not in prompt_off:
+        raise ValueError("o prompt de sempre não tem </think>")
+    sufixo = prompt_off.rsplit(FIM_THINK, 1)[1]
+    return prompt_gen + texto.split(FIM_THINK, 1)[0] + FIM_THINK + sufixo
 
 
 def candidate_tokens(tokenize, prompt: str, n: int) -> tuple[list[int], list[int]]:

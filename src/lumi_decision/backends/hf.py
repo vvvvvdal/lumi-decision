@@ -182,16 +182,19 @@ class HFBackend:
         return torch.log_softmax(self.model(input_ids=ids).logits[0, -1].float(), dim=-1)
 
     @torch.inference_mode()
-    def generate(self, prompt_ids, max_new_tokens=16):
+    def generate(self, prompt_ids, max_new_tokens=16, stop_ids=None):
+        """Geração gulosa. H11: `stop_ids` (ex.: o token `</think>`) também param a geração (parada "stop")."""
         ids = torch.tensor([prompt_ids], device=self.device)
+        stop_ids = list(stop_ids or [])
         _sync()
         t0 = time.perf_counter()
         out = self.model.generate(input_ids=ids, attention_mask=torch.ones_like(ids), max_new_tokens=max_new_tokens,
-                                  do_sample=False, eos_token_id=self.eos_ids, pad_token_id=self.pad_id)
+                                  do_sample=False, eos_token_id=self.eos_ids + stop_ids, pad_token_id=self.pad_id)
         _sync()
         ms = (time.perf_counter() - t0) * 1000
         new = out[0, len(prompt_ids):].tolist()
-        stop = "eos" if new and new[-1] in self.eos_ids else "limit"
+        stop = ("stop" if new and new[-1] in stop_ids else
+                "eos" if new and new[-1] in self.eos_ids else "limit")
         text = self.tok.decode([t for t in new if t not in self.eos_ids], skip_special_tokens=False)
         return new, text, {"latency_ms": ms, "stop_type": stop}
 

@@ -44,3 +44,9 @@ Não há código novo: as flags do bandit já combinam com `--adapt-*` e `--init
 - `scripts/analise_h9.py --base h9r_k100 --novos h10_bandit_k100,h10_acerto_k100` (o custo de não ver o
   gabarito)
 - `scripts/h9_recalibrar.py --base h4_log --novo h10_bandit_k100 --sementes 0 --ks 25`
+
+## Nota (21/11/2026): não rodada
+
+Este desenho continua no formato de um passo só, em que o RL só estima com ruído o gradiente que a perda log já
+dá exato. Por isso, ele no máximo empata com o `h9r_k100`. Trocamos pelo piloto da H11, em que o Lumi raciocina
+antes de decidir (`analises/plano_h11_piloto.md`).

@@ -25,8 +25,8 @@ import numpy as np
 
 from . import REPO_ROOT, metrics
 from .data import ARTIFACTS_DIR, SPLITS_CONFIG, check_integrity, load_cases, load_config
-from .prompts import (LETTERS, PROMPT_VERSION, candidate_tokens, load_template, option_char_ends,
-                      option_token_positions, order_options, render, with_abstain)
+from .prompts import (FIM_THINK, LETTERS, PROMPT_VERSION, candidate_tokens, com_raciocinio, load_template,
+                      option_char_ends, option_token_positions, order_options, prompt_pensando, render, with_abstain)
 
 GEN_RE = re.compile(r"\s*(?:\*\*)?([A-Z])(?:\*\*)?[.)]?\s*")
 
@@ -82,7 +82,7 @@ def escolher_exemplos(case, pool: list, k: int, seed: int = 0) -> list:
 
 
 def predict_one(backend, template, case, order, generate=True, max_new_tokens=16, exemplos=(),
-                max_prompt_tokens=0) -> dict:
+                max_prompt_tokens=0, raciocinio=0) -> dict:
     options = order_options(case, order)
     exemplos = list(exemplos)
     while True:  # H8: tira exemplos do fim até o prompt caber no teto de tokens
@@ -92,6 +92,19 @@ def predict_one(backend, template, case, order, generate=True, max_new_tokens=16
             break
         exemplos.pop()
     pointer = getattr(backend, "pointer", None) is not None
+    rac = None
+    if raciocinio > 0:  # H11: o Lumi raciocina antes; a letra é lida depois do </think>
+        if pointer:
+            raise ValueError("H11 (--raciocinio) só com a leitura pelas letras")
+        p_gen = prompt_pensando(render(template, case, options, exemplos, pensar=True), prompt)
+        fim = backend.tokenize(FIM_THINK)
+        toks, texto, ginfo = backend.generate(backend.tokenize(p_gen), raciocinio,
+                                              stop_ids=fim if len(fim) == 1 else None)
+        prompt = com_raciocinio(p_gen, prompt, texto)
+        ids, cands = candidate_tokens(backend.tokenize, prompt, len(options))
+        rac = {"raciocinio": texto.split(FIM_THINK, 1)[0], "rac_tokens": len(toks),
+               "rac_parada": "fim" if (ginfo.get("stop_type") == "stop" or FIM_THINK in texto) else ginfo.get("stop_type"),
+               "rac_ms": ginfo.get("latency_ms")}
     if pointer:  # E4: mesmo prompt; a pointer head lê o fim de cada opção e a última posição
         ids2, offs = backend.offsets(prompt)
         if list(ids2) != list(ids):
@@ -118,6 +131,8 @@ def predict_one(backend, template, case, order, generate=True, max_new_tokens=16
         row["gold_dist"] = case.gold_dist
     if exemplos:
         row["exemplos_ids"] = [e.id for e in exemplos]
+    if rac:
+        row.update(rac)
     if generate:
         toks, text, ginfo = backend.generate(ids, max_new_tokens)
         mm = GEN_RE.fullmatch(text)
@@ -156,6 +171,7 @@ def run_fingerprint(args, cases) -> dict:
         **({"sem_ponteiro": True} if getattr(args, "sem_ponteiro", False) else {}),
         **({"exemplos_contexto": args.exemplos_contexto, "max_prompt_tokens": args.max_prompt_tokens}
            if getattr(args, "exemplos_contexto", 0) else {}),
+        **({"raciocinio": args.raciocinio} if getattr(args, "raciocinio", 0) else {}),
     }
 
 
@@ -176,6 +192,8 @@ def read_existing(pred_path: Path) -> set:
 def cmd_run(args):
     from .backends import make_backend
 
+    if getattr(args, "raciocinio", 0) and args.backend != "hf":
+        raise SystemExit("--raciocinio só com --backend hf")
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     pred_path, meta_path = out / "predicoes.jsonl", out / "meta.json"
@@ -231,7 +249,8 @@ def cmd_run(args):
                     if (case.id, order) in done:
                         continue
                     row = predict_one(backend, template, case, order, generate=not args.no_generate,
-                                      exemplos=exemplos.get(case.id, ()), max_prompt_tokens=args.max_prompt_tokens)
+                                      exemplos=exemplos.get(case.id, ()), max_prompt_tokens=args.max_prompt_tokens,
+                                      raciocinio=getattr(args, "raciocinio", 0))
                     f.write(json.dumps(row, ensure_ascii=False) + "\n")
                     f.flush()
                 if (i + 1) % 25 == 0 or i + 1 == len(cases):
@@ -529,6 +548,8 @@ def main(argv=None):
     r.add_argument("--exemplos-contexto", type=int, default=0,
                    help="H8: nº de casos com gabarito da mesma família no prompt (só casos reservados)")
     r.add_argument("--max-prompt-tokens", type=int, default=6000, help="H8: teto do prompt; corta exemplos se passar")
+    r.add_argument("--raciocinio", type=int, default=0,
+                   help="H11: o Lumi raciocina até N tokens no <think> antes da leitura das letras (só --backend hf)")
     r.add_argument("--out", required=True)
     r.set_defaults(func=cmd_run)
 
