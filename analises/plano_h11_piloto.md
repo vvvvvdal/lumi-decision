@@ -102,3 +102,29 @@ diferença de recompensa entre eles. Os cards do Lumi-Think e do Nemotron recome
 **Observação:** o Lumi escreveu `"\nB"` depois do `</think>`, então o separador natural parece ser `\n`, não
 `\n\n`. A leitura principal continua `\n\n`, como registrado, e a tabela de variantes do piloto mostra se isso
 muda alguma coisa. O GRPO do próximo ciclo escolhe a leitura com esses dados.
+
+## Resultado do piloto inteiro (21/11/2026, `analises/h11p2.md` no cluster)
+
+88 casos (8 por família), N = 512, G = 4. Leitura principal `\n\n`, como registrado.
+
+| Critério | Limite | Resultado | |
+|---|---|---|---|
+| Guloso: fecha o `</think>` | ≥ 80% | 81% | passa |
+| Guloso: degenera | ≤ 10% | 1% | passa |
+| A decisão não quebra (vistas) | queda ≤ 5 pontos | Felhen −2,5; Telepatia −12,5; juntas −6,3 | **não passa** |
+| Tempo por raciocínio | ≤ 6 s | 3,9 s | passa |
+| Sorteio: fecha o `</think>` | ≥ 80% | 65% | **não passa** |
+| Sorteio: degenera | ≤ 10% | 0% | passa |
+| Sinal para o GRPO | ≥ 30% dos grupos | 66% | passa |
+| Orçamento do GRPO | < 4 h | 1,7 h | passa |
+
+**Pelo critério: ainda não vale montar o GRPO com o Lumi oficial do jeito que está.** O plano B (t6) não se
+aplica, porque ele era para "não raciocina", e o Lumi raciocina.
+
+Informativo:
+- depois do raciocínio, o Lumi fica superconfiante: o NLL sobe de 0,36–0,96 para 0,98–4,24, e o ECE chega
+  a 0,55;
+- os raciocínios que não fecham se concentram onde ele sabe menos (Felhen reservadas e Telepatia vistas);
+- `\n` fica um pouco melhor que `\n\n` no NLL nos 4 recortes.
+
+Detalhes em `Resultados H11 - piloto do raciocínio.md`, na pasta `Decision Models`.
