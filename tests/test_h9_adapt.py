@@ -56,3 +56,24 @@ def test_sem_adapt_o_treino_normal_nao_muda(monkeypatch):
     chamado = {}
     monkeypatch.setattr(lora, "build_training_set", lambda *a, **k: chamado.setdefault("ok", ["normal"]))
     assert lora.training_set_for(lora.TrainConfig()) == ["normal"]
+
+
+def test_replay_rodizio_entre_familias_e_deterministico():
+    pool = ([c(i, "grande", "train", held=False) for i in range(50)]
+            + [c(i, "pequena", "train", held=False) for i in range(3)])
+    r = lora.replay_set(pool, 10, seed=0)
+    fams = [x.family for x in r]
+    assert len(r) == 10 and fams.count("pequena") == 3  # a pequena entra inteira antes de a grande dominar
+    assert [x.id for x in r] == [x.id for x in lora.replay_set(pool, 10, seed=0)]
+    assert len(lora.replay_set(pool, 100, seed=0)) == 53  # não passa do que existe
+
+
+def test_training_set_for_com_replay(monkeypatch):
+    vistos = [c(i, "vista", "train", held=False) for i in range(40)]
+    monkeypatch.setattr(lora, "build_adapt_set", lambda fams, k, seed: [c(i, "nova", "dev") for i in range(k)])
+    monkeypatch.setattr(lora, "build_training_set", lambda *a, **kw: vistos)
+    cfg = lora.TrainConfig(adapt_familias=["s:nova"], adapt_k=6, adapt_replay=1.0)
+    out = lora.training_set_for(cfg)
+    assert sum(x.held_out for x in out) == 6 and sum(not x.held_out for x in out) == 6
+    cfg0 = lora.TrainConfig(adapt_familias=["s:nova"], adapt_k=6)
+    assert all(x.held_out for x in lora.training_set_for(cfg0))  # sem replay = H9 igual

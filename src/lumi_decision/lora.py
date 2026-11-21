@@ -114,12 +114,31 @@ def adapt_registro(cases: list[Case]) -> list[dict]:
     return [{"fonte": s, "familia": f, "split": sp, "grupos": sorted(g)} for (s, f, sp), g in sorted(by.items())]
 
 
+def replay_set(pool: list[Case], n: int, seed: int = 0) -> list[Case]:
+    """H9r: n casos já vistos para o replay, em rodízio entre as famílias (cada família vista entra por igual,
+    mesmo as pequenas); dentro de cada família, ordem por hash. Determinístico."""
+    by = {}
+    for c in pool:
+        by.setdefault((c.source, c.family), []).append(c)
+    filas = [sorted(by[f], key=lambda c: hashlib.sha256(f"{seed}:replay:{c.id}".encode()).hexdigest())
+             for f in sorted(by)]
+    out, i = [], 0
+    while len(out) < n and any(i < len(q) for q in filas):
+        out.extend(q[i] for q in filas if i < len(q))
+        i += 1
+    return out[:n]
+
+
 def training_set_for(cfg: "TrainConfig") -> list[Case]:
     """O conjunto de treino exatamente como o `train` monta (usado também pela contagem de orçamento)."""
+    seed = cfg.seed if cfg.data_seed < 0 else cfg.data_seed
     if cfg.adapt_k > 0:  # H9: só os k grupos rotulados das famílias reservadas
-        return build_adapt_set(cfg.adapt_familias, cfg.adapt_k, cfg.seed if cfg.data_seed < 0 else cfg.data_seed)
-    return build_training_set(cfg.sources, cfg.cap_per_family, cfg.seed if cfg.data_seed < 0 else cfg.data_seed,
-                              parse_source_caps(cfg.source_caps))
+        adapt = build_adapt_set(cfg.adapt_familias, cfg.adapt_k, seed)
+        if cfg.adapt_replay > 0:  # H9r: + casos das famílias vistas (treino original), contra o esquecimento
+            vistos = build_training_set(cfg.sources, cfg.cap_per_family, seed, parse_source_caps(cfg.source_caps))
+            adapt = adapt + replay_set(vistos, round(cfg.adapt_replay * len(adapt)), seed)
+        return adapt
+    return build_training_set(cfg.sources, cfg.cap_per_family, seed, parse_source_caps(cfg.source_caps))
 
 
 def target_vector(case: Case, options, soft: bool) -> list[float]:
@@ -501,6 +520,7 @@ class TrainConfig:
     abster_beta: float = 0.02   # H5: peso do KL para o modelo sem adaptador
     adapt_familias: list = field(default_factory=list)  # H9: fonte:família reservadas para o treino curto
     adapt_k: int = 0            # H9: > 0 troca o treino por k grupos rotulados de cada família de adapt_familias
+    adapt_replay: float = 0.0   # H9r: com adapt_k > 0, junta round(adapt_replay × n_adapt) casos já vistos
 
 
 class _Stop:
@@ -631,7 +651,7 @@ def train(cfg: TrainConfig, out: Path, resume: bool = True, *, model=None, tok=N
 
     cases = cases if cases is not None else training_set_for(cfg)
     if cfg.adapt_k > 0:  # H9: registra os grupos usados, para a análise tirá-los da avaliação
-        (out / "adapt_grupos.json").write_text(json.dumps(adapt_registro(cases), indent=1, ensure_ascii=False),
+        (out / "adapt_grupos.json").write_text(json.dumps(adapt_registro([c for c in cases if c.held_out]), indent=1, ensure_ascii=False),
                                                encoding="utf-8")
     if cfg.abster_custo > 0:  # H5: "Não sei" vira a última opção de todo caso de treino
         cases = [with_abstain(c) for c in cases]
