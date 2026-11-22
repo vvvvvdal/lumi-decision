@@ -153,3 +153,21 @@ Só CPU, sem rodar a GPU de novo.
   problema a mais.
 - É uma análise feita depois de ver os dados, com poucos casos. Ela orienta o desenho do próximo ciclo, mas
   não muda o critério do piloto.
+
+**Resultado da separação (job 37786, linha "todas" do guloso):**
+
+| Raciocínio | n | Acurácia sem → com | Confiança média | Erros com confiança ≥ 0,9 |
+|---|---:|---|---:|---:|
+| Fechou | 71 | 0,732 → 0,704 | 1,00 | 21 de 21 |
+| Não fechou | 17 | 0,706 → 0,353 | 0,73 | 4 de 11 |
+
+- A condição 1 passa (−2,8 pontos).
+- A condição 2 falha: só 4 dos 25 erros confiantes (16%) estão nos que não fecharam.
+
+**Pela regra: a superconfiança é do próprio raciocínio.**
+- A queda de acurácia vem dos cortados.
+- No sorteio, os que fecharam têm 64 de 65 erros confiantes.
+
+**Ponto de atenção para o GRPO:** com as letras a 100% depois do raciocínio, o Brier das letras vira quase só
+acerto ou erro. O próximo ciclo deve tirar a confiança de algo que o modelo consiga graduar, como a confiança
+escrita do RLCR.
