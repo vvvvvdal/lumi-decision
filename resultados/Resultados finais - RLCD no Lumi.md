@@ -117,8 +117,11 @@ Detalhes em `Resultados H11 - piloto do raciocínio.md`.
 ## Limites
 
 - **Só `dev`.** O `test` oficial não foi tocado.
-- **Sementes:** H4 (log e Brier), H6 (`bandit_log` com G = 32, job 37691), H9 com k = 100 e H9r têm 3 sementes.
-  H5, os outros braços da H6, H8, H9m e H9a têm só a semente 0.
+- **Sementes:**
+  - têm 3 sementes: H4 (log e Brier), H6 (`bandit_log` com G = 32, job 37691), H9 com k = 100 e H9r;
+  - H5: a comparação com a regra simples (abster pela confiança) usa só a semente 0. O λ = 3 foi repetido com
+    3 sementes para ver em que casos ele abstém;
+  - os outros braços da H6, H8, H9m e H9a têm só a semente 0.
 - **Matéria nova em poucas famílias:** só 3 reservadas (2 do Felhen e 1 da Telepatia). As vistas da Telepatia
   têm só 84 grupos.
 - **Oráculo otimista:** os números de "oráculo" ajustam e medem no mesmo conjunto. A receita final usa o ajuste
