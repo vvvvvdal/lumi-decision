@@ -179,6 +179,46 @@ def letra_do_raciocinio(texto: str, n: int) -> str | None:
     return validas[-1] if validas else None
 
 
+# H11b: a confiança ESCRITA (estilo RLCR), perguntada num turno novo do usuário depois da resposta. Depois de um
+# raciocínio que termina, a leitura das letras sai com ~100% (copia a conclusão do texto); o número escrito é uma
+# confiança que o modelo pode graduar.
+PERGUNTA_CONFIANCA = ("Qual é a probabilidade, de 0 a 100, de que a sua resposta esteja correta? "
+                      "Responda apenas com o número.")
+_SENTINELA = "@@RESPOSTA_DO_ASSISTENTE@@"
+
+
+def turno_confianca(template, pergunta: str = PERGUNTA_CONFIANCA) -> str:
+    """H11b: o texto que vem DEPOIS da resposta do assistente: o fim do turno dele, a pergunta do usuário e o
+    começo do turno novo (no modo de sempre, `<think></think>`). Sai do próprio template, com uma resposta-
+    sentinela no histórico, para não escrever tags à mão."""
+    msgs = [{"role": "user", "content": "x"}, {"role": "assistant", "content": _SENTINELA},
+            {"role": "user", "content": pergunta}]
+    txt = template.render(messages=msgs, add_generation_prompt=True, enable_thinking=False)
+    if txt.count(_SENTINELA) != 1 or pergunta not in txt.split(_SENTINELA, 1)[1]:
+        raise ValueError("o template não mostra a resposta do assistente uma vez antes da pergunta nova")
+    return txt.split(_SENTINELA, 1)[1]
+
+
+def prompt_confianca(prompt_lido: str, letra: str, depois: str) -> str:
+    """H11b: o prompt em que a letra foi lida (raciocínio + separador), a letra escolhida e o turno da pergunta."""
+    return prompt_lido + letra + depois
+
+
+_NUM_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*(%?)")
+
+
+def ler_confianca(texto: str) -> float | None:
+    """H11b: o primeiro número da resposta, como probabilidade de 0 a 1 ("85", "85%", "Confiança: 90%"). Um
+    decimal até 1 sem % ("0,7", "0.7") já é probabilidade. Sem número ou fora de 0–100: None."""
+    m = _NUM_RE.search(texto)
+    if not m:
+        return None
+    v = float(m[1].replace(",", "."))
+    if v <= 1 and not m[2] and any(s in m[1] for s in ",."):
+        return v
+    return v / 100 if 0 <= v <= 100 else None
+
+
 def candidate_tokens(tokenize, prompt: str, n: int) -> tuple[list[int], list[int]]:
     """Tokeniza o prompt e devolve (ids do prompt, id de cada letra candidata).
 
