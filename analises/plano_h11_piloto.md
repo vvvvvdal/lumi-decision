@@ -128,3 +128,28 @@ Informativo:
 - `\n` fica um pouco melhor que `\n\n` no NLL nos 4 recortes.
 
 Detalhes em `Resultados H11 - piloto do raciocínio.md`, na pasta `Decision Models`.
+
+## Nota (21/11/2026): separar os que fecharam dos que não fecharam (decidida depois do piloto)
+
+**Por que:** os dois pontos que falharam (a queda nas vistas e o sorteio que não fecha) podem ter a mesma
+causa: o comprimento do raciocínio.
+
+**O que:** `scripts/h11_piloto.py` separa, no guloso e no sorteio, os raciocínios que fecharam o `</think>`
+dos que bateram no limite. Para cada grupo, mostra:
+- a acurácia sem → com, nos mesmos casos;
+- o NLL;
+- a confiança média;
+- os erros com confiança ≥ 0,9.
+
+Só CPU, sem rodar a GPU de novo.
+
+**Leitura (registrada antes de ver, na linha "todas", porque cada recorte tem poucos casos):**
+- **O comprimento é a causa principal** se as duas condições valem no guloso:
+  - nos que fecharam, a acurácia com raciocínio fica no máximo 5 pontos abaixo da leitura de sempre;
+  - mais da metade dos erros confiantes (≥ 0,9) está nos que não fecharam.
+
+  Nesse caso, o próximo ciclo começa pelo comprimento.
+- **Senão, a superconfiança é do próprio raciocínio.** O GRPO com Brier é o remédio, e o comprimento é um
+  problema a mais.
+- É uma análise feita depois de ver os dados, com poucos casos. Ela orienta o desenho do próximo ciclo, mas
+  não muda o critério do piloto.

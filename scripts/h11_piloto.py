@@ -42,10 +42,48 @@ def degenerado(r: dict, limiar: float = 0.5) -> bool:
     return not r["raciocinio"].strip() or fracao_repetida(r["raciocinio"]) > limiar
 
 
+def parear(base: list[dict], pil: list[dict]) -> list[tuple[dict, dict]]:
+    """Mesmos casos nos dois lados (pares por case_id, ordem canônica): (leitura de sempre, com raciocínio)."""
+    b = {r["case_id"]: r for r in base if r["order"] == "canonical"}
+    return [(b[r["case_id"]], r) for r in pil if r["case_id"] in b]
+
+
+def fechou(r: dict) -> bool:
+    """O raciocínio fechou o </think> sozinho (linha gulosa: rac_parada; amostra sorteada: parada)."""
+    return r.get("rac_parada", r.get("parada")) == "fim"
+
+
+def confianca(rows: list[dict]) -> float:
+    return float(np.mean([max(r["probs"].values()) for r in rows]))
+
+
+def erros_confiantes(rows: list[dict], limiar: float = 0.9) -> tuple[int, int]:
+    """(erros com a maior probabilidade ≥ limiar, total de erros)."""
+    erros = [r for r in rows if r["pred"] != r["gold"]]
+    return sum(max(r["probs"].values()) >= limiar for r in erros), len(erros)
+
+
+def por_fecho(pares: list[tuple[dict, dict]]) -> dict:
+    """H11 (separação feita depois do piloto): os mesmos números para os raciocínios que fecharam o </think> e
+    para os que bateram no limite (lidos com o </think> fechado por nós). "Sem" = leitura de sempre nos MESMOS
+    casos, para comparar a queda dentro de cada grupo (os que não fecham tendem a ser os casos difíceis)."""
+    out = {}
+    for nome, flag in (("fechou", True), ("nao_fechou", False)):
+        ps = [(x, y) for x, y in pares if fechou(y) == flag]
+        if not ps:
+            out[nome] = {"n": 0}
+            continue
+        sem, com = [x for x, _ in ps], [y for _, y in ps]
+        k, m = erros_confiantes(com)
+        out[nome] = {"n": len(ps), "acc_sem": metrics.accuracy(sem), "acc_com": metrics.accuracy(com),
+                     "nll_sem": metrics.nll(sem), "nll_com": metrics.nll(com), "conf_com": confianca(com),
+                     "erros_conf": k, "erros": m}
+    return out
+
+
 def recorte(base: list[dict], pil: list[dict]) -> dict:
     """Mesmos casos nos dois lados (pares por case_id, ordem canônica)."""
-    b = {r["case_id"]: r for r in base if r["order"] == "canonical"}
-    pares = [(b[r["case_id"]], r) for r in pil if r["case_id"] in b]
+    pares = parear(base, pil)
     if not pares:
         return {"n": 0}
     sem, com = [x for x, _ in pares], [y for _, y in pares]
@@ -64,6 +102,7 @@ def recorte(base: list[dict], pil: list[dict]) -> dict:
         "texto_disse": float(np.mean([y.get("rac_letra_texto") is not None for y in com])),
         "sufixos": por_sufixo(com),
         "sorteio": sorteio(com),
+        "por_fecho": por_fecho(pares),
     }
 
 
@@ -98,6 +137,12 @@ def sorteio(com: list[dict]) -> dict:
         certos = [r["pred"] == r["gold"] for r in rows]
         mistos.append(any(certos) and not all(certos))
         desvios.append(float(np.std([recompensa_brier(r["probs"], r["gold"]) for r in rows])))
+    fecho = {}
+    for nome, flag in (("fechou", True), ("nao_fechou", False)):
+        rs = [r for r in amostras if fechou(r) == flag]
+        k, m = erros_confiantes(rs) if rs else (0, 0)
+        fecho[nome] = ({"n": len(rs), "acc": metrics.accuracy(rs), "nll": metrics.nll(rs), "conf": confianca(rs),
+                        "erros_conf": k, "erros": m} if rs else {"n": 0})
     return {
         "n": len(grupos), "g": len(grupos[0]["rac_amostras"]),
         "acc": metrics.accuracy(amostras), "ece": metrics.ece(amostras), "nll": metrics.nll(amostras),
@@ -107,7 +152,29 @@ def sorteio(com: list[dict]) -> dict:
         "com_sinal": float(np.mean([d > 0.01 for d in desvios])),
         "ms_grupo_med": float(np.median([y["rac_amostras_ms"] for y in grupos])),
         "lote": sorted({y.get("rac_amostras_lote") for y in grupos}),
+        "por_fecho": fecho,
     }
+
+
+_ROTULO_FECHO = {"fechou": "fechou", "nao_fechou": "não fechou"}
+
+
+def _linhas_fecho_guloso(fonte: str, nome: str, pf: dict) -> list[str]:
+    out = []
+    for k, v in pf.items():
+        if v["n"]:
+            out.append(f"| {fonte} | {nome} | {_ROTULO_FECHO[k]} | {v['n']} | {v['acc_sem']:.3f} → {v['acc_com']:.3f} | "
+                       f"{v['nll_sem']:.3f} → {v['nll_com']:.3f} | {v['conf_com']:.2f} | {v['erros_conf']}/{v['erros']} |")
+    return out
+
+
+def _linhas_fecho_sorteio(fonte: str, nome: str, pf: dict) -> list[str]:
+    out = []
+    for k, v in pf.items():
+        if v["n"]:
+            out.append(f"| {fonte} | {nome} | {_ROTULO_FECHO[k]} | {v['n']} | {v['acc']:.3f} | {v['nll']:.3f} | "
+                       f"{v['conf']:.2f} | {v['erros_conf']}/{v['erros']} |")
+    return out
 
 
 def main(argv=None):
@@ -130,7 +197,12 @@ def main(argv=None):
     sort = ["| fonte | recorte | grupos × G | acc | ECE | NLL | fecha | degenerado | grupos mistos | desvio da recompensa "
             "(mediana) | grupos com sinal | s por grupo |",
             "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
-    todos, exemplos, bruto = [], [], {}
+    fg = ["| fonte | recorte | fechou? | n | acc sem → com | NLL sem → com | confiança média (com) "
+          "| erros com confiança ≥ 0,9 |",
+          "|---|---|---|---:|---|---|---:|---:|"]
+    fs = ["| fonte | recorte | fechou? | amostras | acc | NLL | confiança média | erros com confiança ≥ 0,9 |",
+          "|---|---|---|---:|---:|---:|---:|---:|"]
+    todos, pares_todos, exemplos, bruto = [], [], [], {}
     for fonte in a.fontes.split(","):
         pp, pb = runs / f"{a.piloto}_{fonte}_dev", runs / f"{a.base}_{fonte}_dev"
         if not ((pp / "predicoes.jsonl").exists() and (pb / "predicoes.jsonl").exists()):
@@ -139,6 +211,7 @@ def main(argv=None):
         pil = [r for r in carregar(pp) if "raciocinio" in r]
         base = carregar(pb)
         todos += pil
+        pares_todos += parear(base, pil)
         for nome, filtro in (("vistas", False), ("reservadas", True)):
             m = recorte(base, [r for r in pil if r["held_out"] == filtro])
             bruto[f"{fonte}|{nome}"] = m
@@ -158,6 +231,8 @@ def main(argv=None):
                 sort.append(f"| {fonte} | {nome} | {g['n']} × {g['g']} | {g['acc']:.3f} | {g['ece']:.3f} | {g['nll']:.3f} | "
                             f"{g['fecha']:.0%} | {g['degenerado']:.0%} | {g['misto']:.0%} | {g['desvio_med']:.3f} | "
                             f"{g['com_sinal']:.0%} | {g['ms_grupo_med'] / 1000:.1f} |")
+                fs += _linhas_fecho_sorteio(fonte, nome, g["por_fecho"])
+            fg += _linhas_fecho_guloso(fonte, nome, m["por_fecho"])
         for r in pil[: a.exemplos]:
             texto = r["raciocinio"].strip()
             exemplos.append(f"**{fonte} · {r['family']} · {'reservada' if r['held_out'] else 'vista'} · "
@@ -175,9 +250,13 @@ def main(argv=None):
         "s_mediano": ms / 1000,
         "horas_grpo": a.rollouts * ms / 3.6e6,
     }
+    resumo["por_fecho"] = por_fecho(pares_todos)
+    fg += _linhas_fecho_guloso("todas", "todos", resumo["por_fecho"])
     sg = sorteio(todos)
     if sg["n"]:
-        resumo["sorteio"] = {k: sg[k] for k in ("n", "g", "fecha", "degenerado", "misto", "com_sinal", "lote")}
+        resumo["sorteio"] = {k: sg[k] for k in ("n", "g", "fecha", "degenerado", "misto", "com_sinal", "lote",
+                                                "por_fecho")}
+        fs += _linhas_fecho_sorteio("todas", "todos", sg["por_fecho"])
         resumo["s_grupo_mediano"] = sg["ms_grupo_med"] / 1000
         resumo["horas_grpo_sorteio"] = a.rollouts / sg["g"] * sg["ms_grupo_med"] / 3.6e6
     bruto["geral"] = resumo
@@ -198,6 +277,11 @@ def main(argv=None):
                  "\nRecompensa = −Brier da leitura depois do raciocínio sorteado. Misto = o grupo tem decisão certa e "
                  "errada. Com sinal = desvio da recompensa no grupo acima de 0,01 (sem isso o GRPO não aprende nada "
                  "daquele caso).\n") if sg["n"] else "")
+             + "\n## Fechou ou não fechou o </think> (separado depois do piloto)\n\nGuloso:\n\n" + "\n".join(fg) + "\n"
+             + (("\nSorteio:\n\n" + "\n".join(fs) + "\n") if sg["n"] else "")
+             + "\nSeparação feita depois de ver o piloto (só informativa). Sem = leitura de sempre nos MESMOS casos: "
+             "compare a queda dentro de cada linha, porque os que não fecham tendem a ser os casos difíceis. Quando o "
+             "raciocínio não fecha, o </think> é fechado por nós. Confiança = maior probabilidade entre as letras.\n"
              + "\n## Exemplos\n\n" + "\n\n".join(exemplos) + "\n")
     print(texto)
     if a.out:

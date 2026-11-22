@@ -177,8 +177,9 @@ def test_relatorio_do_piloto(tmp_path):
                           rac_letra_texto="a" if i % 3 else None, rac_depois_think="\n\nA",
                           rac_probs_sufixo={"cru": {"a": 0.3, "b": 0.7}, "nl2": {"a": 0.8, "b": 0.2}},
                           rac_amostras_ms=8000.0, rac_amostras_lote=4,
-                          rac_amostras=[{"raciocinio": "x y z w", "tokens": 5, "parada": "fim", "letra_texto": None,
-                                         "probs": ({"a": 0.9, "b": 0.1} if (j < 2 or i % 2) else {"a": 0.2, "b": 0.8})}
+                          rac_amostras=[{"raciocinio": "x y z w", "tokens": 5, "parada": "limit" if j == 3 else "fim",
+                                         "letra_texto": None,
+                                         "probs": ({"a": 0.9, "b": 0.1} if (j < 2 or i % 2) else {"a": 0.05, "b": 0.95})}
                                         for j in range(4)]))
     for nome, rows in (("h4_log_felhen_dev", base), ("h11p_felhen_dev", pil)):
         (tmp_path / nome).mkdir()
@@ -197,5 +198,16 @@ def test_relatorio_do_piloto(tmp_path):
     assert sv["misto"] == pytest.approx(2 / 3)                          # i = 0 e 2 misturam certo e errado
     assert sv["com_sinal"] == pytest.approx(2 / 3) and sv["acc"] == pytest.approx(8 / 12)
     assert bruto["geral"]["horas_grpo_sorteio"] == pytest.approx(1800 / 4 * 8 / 3600)   # 450 grupos × 8 s
+    # separação fechou / não fechou: guloso (i = 0 bateu no limite) e sorteio (a amostra j = 3 bateu no limite)
+    fv = v["por_fecho"]
+    assert fv["fechou"]["n"] == 2 and fv["nao_fechou"]["n"] == 1
+    assert fv["nao_fechou"]["acc_sem"] == 0 and fv["nao_fechou"]["acc_com"] == 1
+    assert fv["fechou"]["conf_com"] == pytest.approx(0.8) and fv["fechou"]["erros"] == 0
+    assert bruto["geral"]["por_fecho"]["fechou"]["n"] == 5 and bruto["geral"]["por_fecho"]["nao_fechou"]["n"] == 1
+    sf = sv["por_fecho"]                                                # j = 3: i = 0 e 2 erram, i = 1 acerta
+    assert sf["nao_fechou"]["n"] == 3 and sf["nao_fechou"]["acc"] == pytest.approx(1 / 3)
+    assert (sf["nao_fechou"]["erros_conf"], sf["nao_fechou"]["erros"]) == (2, 2)
+    assert sf["fechou"]["n"] == 9 and sf["fechou"]["acc"] == pytest.approx(7 / 9)
     md = out.read_text(encoding="utf-8")
+    assert "Fechou ou não fechou" in md and "| todas | todos | não fechou | 1 |" in md
     assert "passo 0" in md and "Onde ler a decisão" in md and "Sorteio (como um grupo do GRPO)" in md and '`"\\n\\nA"`' in md
