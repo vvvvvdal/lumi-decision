@@ -12,6 +12,16 @@ numa única passada, sem gerar texto (linha Jev / System One).
 | **H2** | LoRA melhora a decisão também em famílias inéditas. | A1 (LoRA, mesmo readout) contra A0, separando famílias vistas e reservadas. TF-IDF supervisionado como referência nas vistas. |
 | **H3** | Uma pointer head melhora qualidade ou estabilidade em relação ao LM head com LoRA. | B (pointer head + LoRA) contra A1 com mesmos dados, passos e alvos. Só é empate se o IC 95% inteiro ficar dentro de ±2 pontos; IC que cruza a margem é inconclusivo. |
 
+## Continuação: RLCD no Lumi (H4 a H11, branch `h6-bandit`)
+
+Depois de H1–H3, a mesma receita foi usada para estudar **RLCD** (decisões com confiança honesta). Está tudo em
+[`resultados/`](resultados/):
+
+- **Resumo:** [Resultados finais - RLCD no Lumi](resultados/Resultados%20finais%20-%20RLCD%20no%20Lumi.md).
+- **Cada experimento:** `resultados/Resultados H*.md`.
+- **Planos registrados antes de rodar:** `analises/plano_h*.md`.
+- **Fontes principais:** [Referências](resultados/Refer%C3%AAncias%20-%20RLCD%20no%20Lumi.md).
+
 ## Mecanismo de readout
 
 O prompt termina em `<|im_start|>assistant\n<think></think>` (thinking desligado), exatamente onde a geração
