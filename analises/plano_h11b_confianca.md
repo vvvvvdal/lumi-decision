@@ -74,3 +74,23 @@ que muda com a dúvida e é mais baixo quando ele erra.
 - as respostas cruas;
 - se o `prompt_sha1` bate (senão, o job para com erro);
 - o tempo por resposta.
+
+## Nota (23/11/2026): teste curto (job 37794, `analises/h11b_teste.md`)
+
+8 casos (4 vistos por fonte), com os 4 sorteados de cada um.
+
+**A mecânica funciona:**
+- o prompt termina como planejado: o raciocínio, `</think>\n\n`, a letra, `<|im_end|>`, a pergunta nova e
+  `<|im_start|>assistant\n<think></think>`;
+- o `prompt_sha1` bateu em todos os casos (o job não parou);
+- 100% das respostas trazem um número;
+- 0,27 s por resposta.
+
+**Primeiros sinais** (8 casos, só indicativos; o critério vale no piloto inteiro):
+- a confiança escrita fica sempre em 90 ou mais, e 75% das respostas são "100";
+- no guloso, ela não separa acerto de erro (AUROC 0,30 com 3 erros);
+- nos 32 sorteados, separa um pouco (0,71);
+- a consistência dos 4 sorteios separou os 8 casos (AUROC 1,0).
+
+Nada muda no desenho. O piloto inteiro roda com `sbatch slurm/h11b_confianca.sbatch` (88 casos, pastas
+`runs/h11b_*`).
