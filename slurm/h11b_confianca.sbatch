@@ -4,13 +4,15 @@
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
-#SBATCH --time=01:00:00
+#SBATCH --time=00:20:00
 #SBATCH --output=logs/%x-%j.out
 # H11b: confiança ESCRITA depois do raciocínio. Reaproveita os raciocínios do piloto da H11 (runs/h11p2_*),
 # pergunta ao Lumi (mesmo adaptador) a probabilidade de 0 a 100 de a resposta estar certa e compara com as
 # outras fontes de confiança (scripts/h11b_confianca.py). Critério: analises/plano_h11b_confianca.md.
 # Uso:         sbatch slurm/h11b_confianca.sbatch [RUN=runs/h4_log]
 # Teste curto: H11B_LIMITE=4 sbatch slurm/h11b_confianca.sbatch   (pastas runs/h11b_teste_*)
+# Tempo curto (20 min) para o Slurm encaixar o job nos buracos da fila; roda em ~5 min. Se estourar, é só
+# reenviar: a geração retoma de onde parou.
 set -uo pipefail
 cd "${SLURM_SUBMIT_DIR:-.}"; [ -f slurm/config.sh ] || cd "/raid/$USER/lumi-decision"
 source slurm/config.sh
