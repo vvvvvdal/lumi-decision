@@ -2,26 +2,101 @@
 
 **Autor:** Felipe Vidal, equipe de Benchmarks e Agentes, PDC SLMs (CEIA/UFG)
 **Período:** 18 a 21/11/2026. Experimentos encerrados em 21/11.
-**Código:** fork `vvvvvdal/lumi-decision`, branch `h6-bandit` (último commit `28be789`), a partir do
+**Código:** fork `vvvvvdal/lumi-decision`, branch `h6-bandit` (último commit de código `28be789`), a partir do
 `Palharess/lumi-decision`.
 **Avaliação:** tudo no `dev`; o `test` oficial não foi usado. Os detalhes estão em cada `Resultados H*.md`.
 
 ## A pergunta
 
 O Lumi-4B escolhe uma opção e diz quanta confiança tem. Queremos que essa confiança seja **honesta**: quando
-ele diz 70%, deve acertar 70% das vezes. Com isso, ele pode dizer "não sei" quando a chance de errar é alta.
+ele diz 70%, deve acertar 70% das vezes. Com isso, ele pode dizer "não sei" quando a chance de errar é alta
+(os dois jeitos de fazer isso estão logo abaixo).
 
 Os experimentos tentaram responder três perguntas:
 1. que recompensa deixa o Lumi honesto;
 2. se ele continua honesto em matéria nova (as famílias reservadas, que ele não viu no treino);
 3. como fazer ele **saber mais** na matéria nova sem esquecer a antiga.
 
+## Os dois tipos de "não sei"
+
+Exemplo: chega um ticket, e o Lumi precisa escolher o time A, B ou C. Há dois jeitos de ele "não responder", e
+eles não são a mesma coisa.
+
+| | "Não sei" pela confiança (a regra simples) | "Não sei" como opção no prompt (H5) |
+|---|---|---|
+| Como funciona | O prompt só tem A, B e C, e o Lumi sempre escolhe uma. Se a confiança ficar abaixo de um limite, o **sistema** passa o caso para uma pessoa | O prompt ganha uma opção a mais, "Não sei / passar para um humano" (`prompts.with_abstain`). O **próprio Lumi** escolhe essa opção, como escolheria uma letra |
+| Como é aprendido | O Lumi não aprende nada novo. O limite é escolhido com casos rotulados, para errar no máximo 10% das respostas | Com RL: acertar vale +1, errar vale −λ e "não sei" vale 0. Com λ = 3, só vale responder com mais de 75% de chance |
+| Onde aparece | H4, H7, H9b e a receita final (de 7% para 72% das faturas novas respondidas) | Só na H5 |
+| Resultado | É o que a receita final usa | Continua honesto, mas não ganha da regra simples: respondendo a mesma quantidade de casos, erra igual ou mais |
+
+**Na prática:**
+- **"Quando ele tinha o 'não sei' como opção, respondia muito 'não sei'"** é a H5. Na Telepatia, ele escolhia a
+  opção em cerca de 91% dos casos com λ = 3, e em quase todos com λ = 9.
+- **"Depois do treino com 100 exemplos, ele responde mais"** é a H9 com a **regra simples**. Ele passou a saber a
+  matéria, a confiança subiu nos casos que ele sabe, e menos casos ficaram abaixo do limite.
+- **A H5 não foi repetida depois da H9.** Essa comparação está em aberto.
+
+## Ele sabe o que não sabe? (pergunta da reunião de 23/11)
+
+A pergunta: o "não sei" acontece porque o Lumi **reconhece** que não sabe, ou é só um jeito de esconder os
+erros? Se ele acerta bem nos casos que responde e manda para uma pessoa justamente os que erraria, ele reconhece
+o que sabe.
+
+Há duas razões diferentes para um caso merecer um "não sei":
+- **falta informação no caso:** nem uma pessoa acertaria;
+- **falta conhecimento no modelo:** uma pessoa acertaria, mas o Lumi ainda não aprendeu.
+
+**1. Regra simples: o "não sei" pega os casos que ele erraria?**
+
+O erro nos casos mandados para uma pessoa sai de uma conta aproximada com as médias da H9b. Ainda não foi
+medido caso a caso. "Erro se fosse sorteado" é o erro de mandar para uma pessoa casos escolhidos ao acaso, ou
+seja, o erro geral do modelo (1 − acurácia).
+
+| Matéria nova | Responde | Erro nos que responde | Erro nos "não sei" (aprox.) | Erro se fosse sorteado |
+|---|---:|---:|---:|---:|
+| Faturas (Telepatia), antes do treino curto | 7% | 18% | ~43% | 42% |
+| Faturas (Telepatia), depois | 68% | 10% | ~45% | 21% |
+| Felhen, antes | 16% | 19% | ~52% | 47% |
+| Felhen, depois | 36% | 15% | ~47% | 36% |
+
+A conta, na linha das faturas depois do treino:
+- erro geral: 1 − 0,787 = 0,213;
+- erros entre os respondidos: 0,68 × 0,10 = 0,068;
+- erro nos "não sei": (0,213 − 0,068) / 0,32 ≈ 0,45.
+
+**Leitura:**
+- **Antes de aprender a matéria nova, quase não separava.** Os casos mandados para uma pessoa erravam quase o
+  mesmo que casos sorteados (43% contra 42%).
+- **Depois do treino curto, separa.** Os "não sei" concentram os erros: 45%, contra 21% de um sorteio.
+- **Mas não é perfeito.** Cerca de metade dos casos que ele manda para uma pessoa ele teria acertado.
+
+**2. "Não sei" como opção (H5): ele reage à falta de informação?**
+
+A família `regra_beneficio` permite um teste limpo: o gerador sabe em quais casos falta um documento. Dentro dos
+casos cuja resposta certa é "negar", a única diferença é faltar documento ou não (3 sementes, λ = 3):
+
+| Caso | Diz "não sei" ou pede o documento |
+|---|---:|
+| Negar, **com** documento faltando | 36% |
+| Negar, **sem** documento faltando | 40% |
+| Conceder (tudo certo) | 1,6% |
+
+Se ele reconhecesse a falta de informação, a primeira linha seria bem maior que a segunda. **As duas empatam.**
+Ele diz "não sei" quando o caso tem algum problema (regra violada, documento faltando ou valor acima do teto) e
+quase nunca quando está tudo certo. É um sinal de "caso complicado", não de "me falta informação". Detalhes em
+`Resultados H5 - abstenção por RL.md`.
+
+> **Resposta curta:** em parte. Pela regra simples, depois do treino curto, os casos que ele responde erram
+> 10%, e os que ele manda para uma pessoa erram cerca de 45%. Antes do treino, a separação era quase nula. O
+> "não sei" como opção (H5) reage a casos complicados, não à falta de informação. Ainda não foi medido se o
+> "não sei" da regra simples pega os casos em que falta informação ou só os que ele não aprendeu.
+
 ## O caminho, em uma tabela
 
 | Etapa | Pergunta | Resposta | Número principal |
 |---|---|---|---|
 | H4 | Recompensa de acerto, Brier ou log? | Acerto destrói a honestidade. Brier e log empatam. | Com recompensa de acerto, o ECE das reservadas vai a 0,43–0,48 (3 sementes para log e Brier) |
-| H5 | Treinar o "não sei" como ação de RL? | Mantém o Lumi honesto, mas não supera a regra simples de abster pela confiança | Na mesma cobertura, erra igual ou mais |
+| H5 | Treinar o "não sei" como opção no prompt, com RL? | Mantém o Lumi honesto, mas não supera o "não sei" pela confiança (a regra simples) | Na mesma cobertura, erra igual ou mais |
 | H6 | RL sem gabarito (só "acertou ou errou")? | O que estraga a honestidade é a recompensa, não a falta do gabarito | O `bandit_log` mantém a acurácia e recupera 73–86% da calibração |
 | H7 | Quantos rótulos da matéria nova para recalibrar? | 25 consertam a escala. O limite real é saber pouco da matéria. | Mesmo com ajuste perfeito, responde só 12% (Felhen) e 2% (Telepatia) com 10% de erro |
 | H8 | Mostrar exemplos no prompt ensina? | Não ensina, mas calibra | ECE da Telepatia de 0,104 para 0,029, com a mesma acurácia |
@@ -39,8 +114,8 @@ Os experimentos tentaram responder três perguntas:
    de casos já vistos (replay), por 3 épocas a partir do adaptador da H4 (H9 + H9r).
 3. **Recalibrar:**
    - nas famílias vistas, usar a temperatura que o pipeline já ajusta;
-   - nas novas, usar cerca de 25 rótulos da família para ajustar a temperatura e o limiar do "não sei" (H7 e
-     H9b).
+   - nas novas, usar cerca de 25 rótulos da família para ajustar a temperatura e o limite do "não sei" pela
+     confiança (H7 e H9b).
 
 ## O antes e o depois
 
@@ -134,6 +209,12 @@ Detalhes em `Resultados H11 - piloto do raciocínio.md`.
 - Confirmar a receita final no `test` oficial.
 - Testar com mais famílias reservadas e ver se o ganho se repete.
 - Ver se o RL de abstenção (H5) faz diferença quando o modelo já sabe a matéria, ou seja, depois da H9.
+- **Medir se ele sabe o que não sabe**, sem GPU e com as predições que já existem:
+  - no `h4_log` e no `h9r`, medir caso a caso o erro nos casos respondidos e nos "não sei" pela confiança, com
+    intervalo de confiança, e o AUROC (a chance de um acerto ter confiança maior que um erro);
+  - rodar o teste limpo da `regra_beneficio` (`scripts/analise_falta_info_fatores.py`) tratando "confiança
+    abaixo do limite" como "não sei". Isso mostra se esse "não sei" pega os casos em que falta informação. O
+    script precisa de uma opção nova para isso.
 - **GRPO com raciocínio e recompensa Brier (RLCR).** Antes, dois ajustes da H11:
   - **o comprimento do raciocínio.** Opções:
     - mais tokens;
