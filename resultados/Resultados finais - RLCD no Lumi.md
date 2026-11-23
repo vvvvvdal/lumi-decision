@@ -1,11 +1,5 @@
 # RLCD no Lumi: resumo final dos experimentos (H4 a H9a e piloto H11)
 
-**Autor:** Felipe Vidal, equipe de Benchmarks e Agentes, PDC SLMs (CEIA/UFG)
-**Período:** 18 a 21/11/2026. Experimentos encerrados em 21/11.
-**Código:** fork `vvvvvdal/lumi-decision`, branch `h6-bandit` (último commit de código `28be789`), a partir do
-`Palharess/lumi-decision`.
-**Avaliação:** tudo no `dev`; o `test` oficial não foi usado. Os detalhes estão em cada `Resultados H*.md`.
-
 ## A pergunta
 
 O Lumi-4B escolhe uma opção e diz quanta confiança tem. Queremos que essa confiança seja **honesta**: quando
