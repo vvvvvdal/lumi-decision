@@ -80,10 +80,10 @@ Ele diz "não sei" quando o caso tem algum problema (regra violada, documento fa
 quase nunca quando está tudo certo. É um sinal de "caso complicado", não de "me falta informação". Detalhes em
 `Resultados H5 - abstenção por RL.md`.
 
-> **Resposta curta:** em parte. Pela regra simples, depois do treino curto, os casos que ele responde erram
-> 10%, e os que ele manda para uma pessoa erram cerca de 45%. Antes do treino, a separação era quase nula. O
-> "não sei" como opção (H5) reage a casos complicados, não à falta de informação. Ainda não foi medido se o
-> "não sei" da regra simples pega os casos em que falta informação ou só os que ele não aprendeu.
+**Resposta curta:** em parte. Pela regra simples, depois do treino curto, os casos que ele responde erram
+10%, e os que ele manda para uma pessoa erram cerca de 45%. Antes do treino, a separação era quase nula. O
+"não sei" como opção (H5) reage a casos complicados, não à falta de informação. Ainda não foi medido se o
+"não sei" da regra simples pega os casos em que falta informação ou só os que ele não aprendeu.
 
 ## O caminho, em uma tabela
 
