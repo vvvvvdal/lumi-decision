@@ -36,7 +36,7 @@ eles não são a mesma coisa.
   matéria, a confiança subiu nos casos que ele sabe, e menos casos ficaram abaixo do limite.
 - **A H5 não foi repetida depois da H9.** Essa comparação está em aberto.
 
-## Ele sabe o que não sabe? (pergunta da reunião de 23/11)
+## Ele sabe o que não sabe?
 
 A pergunta: o "não sei" acontece porque o Lumi **reconhece** que não sabe, ou é só um jeito de esconder os
 erros? Se ele acerta bem nos casos que responde e manda para uma pessoa justamente os que erraria, ele reconhece
