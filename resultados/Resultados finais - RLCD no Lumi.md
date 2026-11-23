@@ -32,6 +32,21 @@ eles não são a mesma coisa.
 
 ## Ele sabe o que não sabe?
 
+**Resposta curta: mais ou menos, e só depois de aprender a matéria.**
+
+- **No "não sei" pela confiança (o que a gente usa):** ele manda para uma pessoa os casos mais difíceis.
+  - Depois do treino curto nas faturas novas, ele erra 10% dos casos que responde e erraria uns 45% dos que
+    passa adiante.
+  - Mas não é perfeito: em mais ou menos metade dos casos que ele passa adiante, ele teria acertado.
+  - Antes do treino curto, ele não sabia separar. Os casos que ele passava adiante eram tão difíceis quanto casos
+    escolhidos ao acaso.
+- **No "não sei" como opção (H5):** ele diz "não sei" quando o caso parece complicado, mas não percebe quando
+  falta uma informação de verdade.
+- **O que ainda não sabemos:** se o "não sei" pela confiança aparece porque falta informação no caso ou só
+  porque ele ainda não aprendeu aquele tipo de caso.
+
+Os detalhes vêm abaixo.
+
 A pergunta: o "não sei" acontece porque o Lumi **reconhece** que não sabe, ou é só um jeito de esconder os
 erros? Se ele acerta bem nos casos que responde e manda para uma pessoa justamente os que erraria, ele reconhece
 o que sabe.
@@ -79,11 +94,6 @@ Se ele reconhecesse a falta de informação, a primeira linha seria bem maior qu
 Ele diz "não sei" quando o caso tem algum problema (regra violada, documento faltando ou valor acima do teto) e
 quase nunca quando está tudo certo. É um sinal de "caso complicado", não de "me falta informação". Detalhes em
 `Resultados H5 - abstenção por RL.md`.
-
-**Resposta curta:** em parte. Pela regra simples, depois do treino curto, os casos que ele responde erram
-10%, e os que ele manda para uma pessoa erram cerca de 45%. Antes do treino, a separação era quase nula. O
-"não sei" como opção (H5) reage a casos complicados, não à falta de informação. Ainda não foi medido se o
-"não sei" da regra simples pega os casos em que falta informação ou só os que ele não aprendeu.
 
 ## O caminho, em uma tabela
 
