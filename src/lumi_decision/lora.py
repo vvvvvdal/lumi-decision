@@ -331,7 +331,7 @@ def option_scores(model, batch: list[Example], pad_id: int, head_fp32=None, poin
     return [logp[i, e.cands] + z[i] for i, e in enumerate(batch)]
 
 
-LOSSES = ("log", "brier", "acerto", "acerto_brier", "bandit_log", "bandit_acerto")
+LOSSES = ("log", "brier", "acerto", "acerto_brier", "log_brier", "bandit_log", "bandit_acerto")
 
 
 def bandit_loss(lp_opt, q, kind: str = "bandit_log", n_samples: int = 8, clip: float = 10.0, explorar: float = 0.0,
@@ -374,7 +374,7 @@ def bandit_loss(lp_opt, q, kind: str = "bandit_log", n_samples: int = 8, clip: f
     return -(adv * lp_opt[a]).mean()
 
 
-def option_loss(lp_opt, q, kind: str = "log"):
+def option_loss(lp_opt, q, kind: str = "log", suavizar: float = 0.0):
     """Perda de UM exemplo a partir dos log-probs renormalizados entre as opções (`lp_opt`) e do alvo `q`.
 
     H4 (a forma da recompensa muda a calibração?). Cada perda é menos uma recompensa:
@@ -383,6 +383,9 @@ def option_loss(lp_opt, q, kind: str = "log"):
     - `acerto`: -sum q·p. Acerto esperado ao sortear a opção pela própria distribuição (estilo RLVR).
       É linear em p, logo NÃO é própria: o ótimo põe toda a massa numa opção (superconfiança).
     - `acerto_brier`: acerto + Brier, como a recompensa do RLCR (arXiv:2507.16806).
+    - `log_brier` (H12, receita do Clef): entropia cruzada com label smoothing + Brier, pesos 1 e 1. O alvo da
+      entropia cruzada é suavizado, q_s = (1 - suavizar)·q + suavizar/K; o Brier usa o alvo original. Com
+      `suavizar` = 0 é regra própria; com > 0 o ótimo fica entre q e o uniforme. Os outros tipos ignoram `suavizar`.
     Com alvo suave (`gold_dist`), q é a distribuição de referência; com alvo duro, o one-hot do gabarito.
     """
     if kind == "log":
@@ -394,6 +397,9 @@ def option_loss(lp_opt, q, kind: str = "log"):
         return -(q * p).sum()
     if kind == "acerto_brier":
         return -(q * p).sum() + ((p - q) ** 2).sum()
+    if kind == "log_brier":
+        q_s = (1.0 - suavizar) * q + suavizar / q.shape[0]
+        return -(q_s * lp_opt).sum() + ((p - q) ** 2).sum()
     raise ValueError(f"perda desconhecida: {kind} (opções: {', '.join(LOSSES)})")
 
 
@@ -462,7 +468,8 @@ def batch_loss_abster(model, batch: list[Example], pad_id: int, head_fp32, cfg: 
 
 
 def batch_loss(model, batch: list[Example], pad_id: int, head_fp32=None, pointer=None, loss: str = "log",
-               bandit_clip: float = 10.0, bandit_amostras: int = 8, bandit_explorar: float = 0.0):
+               bandit_clip: float = 10.0, bandit_amostras: int = 8, bandit_explorar: float = 0.0,
+               suavizar: float = 0.0):
     """(soma das perdas, acertos, massa média das letras no vocabulário).
 
     Perda = entropia cruzada entre o alvo e a distribuição RENORMALIZADA entre as opções apresentadas
@@ -483,7 +490,7 @@ def batch_loss(model, batch: list[Example], pad_id: int, head_fp32=None, pointer
             losses.append(bandit_loss(lp_opt, q, loss, n_samples=bandit_amostras, clip=bandit_clip,
                                       explorar=bandit_explorar))
         else:
-            losses.append(option_loss(lp_opt, q, loss))
+            losses.append(option_loss(lp_opt, q, loss, suavizar))
         hits += int(int(lp.argmax()) == e.gold_pos)
         mass += float(lp.detach().exp().sum())
     return torch.stack(losses).sum(), hits, mass / len(batch)
@@ -538,7 +545,8 @@ class TrainConfig:
     epoch_offset: int = 0    # F2.3a: desloca as ordens/planos (época 0 daqui = época `epoch_offset` do E3)
     frozen_targets: list = field(default_factory=list)  # F2.2: alvos cujo LoRA nasce (B = 0) e fica CONGELADO
     source_caps: list = field(default_factory=list)  # F3: teto por família de uma fonte, ex.: felhen=650,f3=1625
-    loss: str = "log"  # H4: log (A1) | brier | acerto | acerto_brier (ver `option_loss`)
+    loss: str = "log"  # H4: log (A1) | brier | acerto | acerto_brier | log_brier (H12) (ver `option_loss`)
+    suavizar: float = 0.0  # H12: label smoothing da entropia cruzada no `log_brier` (receita do Clef)
     bandit_clip: float = 10.0   # H6: corte do peso 1/pi do bandit_log
     bandit_amostras: int = 8    # H6: opções sorteadas por caso (G)
     bandit_explorar: float = 0.0  # H6d: eps de exploração (sorteia de (1-eps)·pi + eps/K; 0 = desligado)
@@ -782,7 +790,7 @@ def train(cfg: TrainConfig, out: Path, resume: bool = True, *, model=None, tok=N
                 else:
                     loss_sum, hits, mass = batch_loss(model, b, pad_id, head32, pointer, loss=cfg.loss,
                                                       bandit_clip=cfg.bandit_clip, bandit_amostras=cfg.bandit_amostras,
-                                                      bandit_explorar=cfg.bandit_explorar)
+                                                      bandit_explorar=cfg.bandit_explorar, suavizar=cfg.suavizar)
                 (loss_sum / n_ex).backward()  # média sobre o lote EFETIVO desta atualização
                 loss_t, hits_t, mass_t = loss_t + float(loss_sum.detach()), hits_t + hits, mass_t + mass * len(b)
                 toks += sum(len(e.ids) for e in b)
