@@ -138,3 +138,26 @@ def test_family_mean_requires_families():
     with pytest.raises(ValueError, match="exigidas"):
         metrics.family_mean_bootstrap(a, a, n_boot=10, require_families=["f1", "f2"])
     assert metrics.family_mean_bootstrap(a, a, n_boot=10, require_families=["f1"])["delta_media_familias"] == 0
+
+
+def test_auroc_bate_com_a_conta_par_a_par():
+    import random
+
+    from lumi_decision.metrics import auroc
+
+    def par_a_par(conf, y):
+        pos = [c for c, a in zip(conf, y) if a]
+        neg = [c for c, a in zip(conf, y) if not a]
+        return sum((p > q) + 0.5 * (p == q) for p in pos for q in neg) / (len(pos) * len(neg))
+
+    rnd = random.Random(0)
+    for _ in range(30):
+        n = rnd.randint(2, 40)
+        conf = [rnd.choice([0.1, 0.5, 0.5, 0.9, rnd.random()]) for _ in range(n)]
+        y = [rnd.random() < 0.6 for _ in range(n)]
+        if all(y) or not any(y):
+            continue
+        assert abs(auroc(conf, y) - par_a_par(conf, y)) < 1e-12
+    assert auroc([0.9, 0.8, 0.2], [True, True, False]) == 1.0
+    assert auroc([1.0, 1.0], [True, False]) == 0.5
+    assert math.isnan(auroc([0.5, 0.6], [True, True]))

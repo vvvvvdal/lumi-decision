@@ -72,8 +72,10 @@ def aplicar(rows: list[dict], T: float, tau: float | None) -> list[dict]:
 
 
 def uma_fonte(calib: list[dict], dev: list[dict], ks: list[int], reps: int, risco: float, rotulos: str,
-              min_aceitos: int, rng: np.random.Generator) -> dict:
-    """Resultados de uma semente × fonte: {metodo: {k: [medidas por repetição]}} (global e oráculo sem k)."""
+              min_aceitos: int, rng: np.random.Generator, coletar: dict | None = None) -> dict:
+    """Resultados de uma semente × fonte: {metodo: {k: [medidas por repetição]}} (global e oráculo sem k).
+    Com `coletar` (um dict), guarda também as linhas medidas do `T_fam+tau_fam` de cada repetição, já com a T da
+    família e o `_tau`: coletar[k] = [linhas da repetição 1, ...]. Não muda os sorteios nem o resultado."""
     vistas = [r for r in calib if not r["held_out"]]
     T_g, tau_g = ajustar(vistas, risco, 20)
     res_dev = [r for r in dev if r["held_out"]]
@@ -108,6 +110,8 @@ def uma_fonte(calib: list[dict], dev: list[dict], ks: list[int], reps: int, risc
                 linhas_Ttau += aplicar(alvo, T, tau)
             reps_T.append(medir(linhas_T))
             reps_Ttau.append(medir(linhas_Ttau))
+            if coletar is not None:
+                coletar.setdefault(k, []).append(linhas_Ttau)
         out[f"T_fam|{k}"] = reps_T
         out[f"T_fam+tau_fam|{k}"] = reps_Ttau
     return out

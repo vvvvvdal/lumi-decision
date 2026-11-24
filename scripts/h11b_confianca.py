@@ -147,13 +147,7 @@ def gerar(a) -> None:
 
 # ------------------------------------------------------------------ análise (CPU)
 
-def auroc(conf, acerto) -> float:
-    """P(a confiança de um acerto > a de um erro); empate vale meio (Mann–Whitney). nan sem acertos ou erros."""
-    pos = [c for c, y in zip(conf, acerto) if y]
-    neg = [c for c, y in zip(conf, acerto) if not y]
-    if not pos or not neg:
-        return float("nan")
-    return float(sum((p > q) + 0.5 * (p == q) for p in pos for q in neg) / (len(pos) * len(neg)))
+from lumi_decision.metrics import auroc  # noqa: E402  (era definida aqui; foi para metrics)
 
 
 def ece_binaria(conf, acerto, bins: int = 10) -> float:

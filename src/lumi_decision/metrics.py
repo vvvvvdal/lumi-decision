@@ -288,6 +288,19 @@ def h3_verdict(quality_ci, flip_ci, margin: float = 0.02) -> dict:
 
 # ---------------------------------------------------------------- calibração (ajuste em calib, uso fixo em dev/test)
 
+def auroc(conf, acerto) -> float:
+    """P(a confiança de um acerto > a de um erro); empate vale meio (Mann–Whitney, pelos postos médios).
+    nan sem acertos ou sem erros."""
+    c = np.asarray(conf, dtype=float)
+    y = np.asarray(acerto, dtype=bool)
+    n1, n0 = int(y.sum()), int((~y).sum())
+    if n1 == 0 or n0 == 0:
+        return float("nan")
+    _, inv, cnt = np.unique(c, return_inverse=True, return_counts=True)
+    postos = (np.cumsum(cnt) - cnt + (cnt + 1) / 2)[inv]  # posto médio (1 = menor) de cada valor
+    return float((postos[y].sum() - n1 * (n1 + 1) / 2) / (n1 * n0))
+
+
 def with_temperature(rows, T: float) -> list[dict]:
     """Reescala as probabilidades: p_k ∝ p_k^(1/T). Não muda o argmax."""
     out = []
