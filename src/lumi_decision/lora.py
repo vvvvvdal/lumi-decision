@@ -35,7 +35,7 @@ from pathlib import Path
 
 from .data import LOADERS, TRAIN_ONLY, drop_eval_overlap, load_cases, load_config, training_cases
 from .prompts import (ABSTER, LETTERS, candidate_tokens, option_char_ends, option_token_positions, order_options,
-                      render, with_abstain)
+                      render, variante_treino, with_abstain)
 from .schema import Case
 
 LORA_TARGETS = ["in_proj", "up_proj", "down_proj", "q_proj", "k_proj", "v_proj", "o_proj"]
@@ -201,17 +201,17 @@ class Encoder:
         self.offsets = offsets
         self.cache, self.checked = {}, Counter()
 
-    def __call__(self, case: Case, order: str, soft: bool) -> Example:
+    def __call__(self, case: Case, order: str, soft: bool, variante: int = 0, semente: int = 0) -> Example:
         options = order_options(case, order)
-        prompt = render(self.template, case, options)
+        prompt = render(self.template, case, options, variante=variante, semente=semente)
         n = len(options)
-        check = self.checked[n] < self.n_checks
+        check = self.checked[(variante, n)] < self.n_checks  # H13: cada variante do prompt é conferida
         if check:
             ids, cands = candidate_tokens(self.tokenize, prompt, n)
             if n in self.cache and self.cache[n] != cands:
-                raise RuntimeError(f"ids das letras mudaram para n={n}")
+                raise RuntimeError(f"ids das letras mudaram para n={n} (variante {variante})")
             self.cache[n] = cands
-            self.checked[n] += 1
+            self.checked[(variante, n)] += 1
         elif self.offsets is None:
             ids, cands = self.tokenize(prompt), self.cache[n]
         else:
@@ -552,6 +552,7 @@ class TrainConfig:
     source_caps: list = field(default_factory=list)  # F3: teto por família de uma fonte, ex.: felhen=650,f3=1625
     loss: str = "log"  # H4: log (A1) | brier | acerto | acerto_brier | log_brier (H12) (ver `option_loss`)
     suavizar: float = 0.0  # H12: label smoothing da entropia cruzada no `log_brier` (receita do Clef)
+    variar_prompt: bool = False  # H13: sorteia a redação do prompt (variantes 0..3) por exemplo e época
     bandit_clip: float = 10.0   # H6: corte do peso 1/pi do bandit_log
     bandit_amostras: int = 8    # H6: opções sorteadas por caso (G)
     bandit_explorar: float = 0.0  # H6d: eps de exploração (sorteia de (1-eps)·pi + eps/K; 0 = desligado)
@@ -666,6 +667,8 @@ def train(cfg: TrainConfig, out: Path, resume: bool = True, *, model=None, tok=N
         raise ValueError("H5 (--abster-custo) só com --readout letras e --loss log")
     if cfg.loss not in LOSSES:
         raise ValueError(f"perda desconhecida: {cfg.loss} (opções: {', '.join(LOSSES)})")
+    if cfg.variar_prompt and cfg.readout != "letras":
+        raise ValueError("H13 (--variar-prompt) só com --readout letras: a pointer head assume o prompt de sempre")
     if cfg.readout not in ("letras", "ponteiro", "residual"):
         raise ValueError(f"readout desconhecido: {cfg.readout}")
     if cfg.init_adapter:  # F2.3a: continua um LoRA já treinado (o otimizador e o cronograma recomeçam)
@@ -712,7 +715,8 @@ def train(cfg: TrainConfig, out: Path, resume: bool = True, *, model=None, tok=N
     epochs = []
     for ep in range(cfg.epochs):
         s = cfg.seed * 1000 + ep + cfg.epoch_offset
-        exs = [enc(c, f"shuffle{s}", cfg.soft) for c in cases]
+        exs = [enc(c, f"shuffle{s}", cfg.soft, *((variante_treino(c.id, s), s) if cfg.variar_prompt else (0, 0)))
+               for c in cases]
         plan = plan_microbatches(exs, cfg.token_budget, cfg.max_micro, s)
         epochs.append((exs, plan, group_steps(plan, cfg.batch_examples)))
     schedule = [(ep, gi) for ep, (_, _, groups) in enumerate(epochs) for gi in range(len(groups))]

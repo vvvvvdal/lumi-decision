@@ -6,8 +6,10 @@ novo − base de ECE, Brier, NLL e acurácia, juntando as sementes disponíveis.
 recalcula as métricas na amostra (ECE não é soma de itens, então não dá para reamostrar diferenças por item).
 As métricas são as cruas, sem temperatura.
 
-Pastas lidas: semente 0 = `runs/h4_<perda>_<fonte>_dev`; semente s > 0 = `runs/h4_<perda>_s<s>_<fonte>_dev`.
-Só entram as sementes que existem para os DOIS braços comparados.
+Pastas lidas: semente 0 = `runs/h4_<perda>_<fonte>_<split>`; semente s > 0 = `runs/h4_<perda>_s<s>_<fonte>_<split>`,
+com `--split dev` por padrão. Só entram as sementes que existem para os DOIS braços comparados.
+H13: `--split devvar` compara no prompt nunca visto; `--split-novo devvar` com `--novos` igual a `--base` mede quanto
+o MESMO braço muda do prompt de sempre para o novo (mesmos casos e ordens, pareados).
 
 Uso (na raiz do repo, sem GPU):
     python scripts/comparar_h4.py                       # log contra brier e acerto
@@ -28,9 +30,9 @@ EPS = 1e-12
 METRICAS = ("ece", "brier", "nll", "acc")
 
 
-def run_dir(runs: Path, perda: str, semente: int, fonte: str) -> Path:
+def run_dir(runs: Path, perda: str, semente: int, fonte: str, split: str = "dev") -> Path:
     nome = f"h4_{perda}" if semente == 0 else f"h4_{perda}_s{semente}"
-    return runs / f"{nome}_{fonte}_dev"
+    return runs / f"{nome}_{fonte}_{split}"
 
 
 def carregar(pasta: Path) -> list[dict]:
@@ -111,7 +113,10 @@ def main(argv=None):
     p.add_argument("--n-boot", type=int, default=2000)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--out", default="", help="grava a tabela em Markdown (e o JSON ao lado, .json)")
+    p.add_argument("--split", default="dev", help="sufixo das pastas do braço base (H13: devvar = prompt novo)")
+    p.add_argument("--split-novo", default="", help="sufixo das pastas dos braços novos (padrão: o mesmo de --split)")
     a = p.parse_args(argv)
+    sp_b, sp_n = a.split, a.split_novo or a.split
     runs = Path(a.runs)
     sementes = [int(s) for s in a.sementes.split(",")]
     linhas = ["| novo − base | fonte | grupo | sementes | n grupos | métrica | base | novo | Δ | IC 95% | leitura |",
@@ -119,24 +124,26 @@ def main(argv=None):
     res = {}
     for novo in a.novos.split(","):
         for fonte in a.fontes.split(","):
-            usadas = [s for s in sementes if (run_dir(runs, a.base, s, fonte) / "predicoes.jsonl").exists()
-                      and (run_dir(runs, novo, s, fonte) / "predicoes.jsonl").exists()]
+            usadas = [s for s in sementes if (run_dir(runs, a.base, s, fonte, sp_b) / "predicoes.jsonl").exists()
+                      and (run_dir(runs, novo, s, fonte, sp_n) / "predicoes.jsonl").exists()]
             if not usadas:
                 print(f">> {novo} × {a.base} em {fonte}: nenhuma semente com os dois braços; pulei")
                 continue
             ra, rb = [], []
             for s in usadas:
-                for dst, perda in ((ra, a.base), (rb, novo)):
-                    for r in carregar(run_dir(runs, perda, s, fonte)):
+                for dst, perda, sp in ((ra, a.base, sp_b), (rb, novo, sp_n)):
+                    for r in carregar(run_dir(runs, perda, s, fonte, sp)):
                         r["_semente"] = s
                         dst.append(r)
             for held, nome in ((False, "vistas"), (True, "reservadas")):
                 c = comparar([r for r in ra if r["held_out"] == held], [r for r in rb if r["held_out"] == held],
                              a.n_boot, a.seed)
-                res[f"{novo}-{a.base}|{fonte}|{nome}"] = {"sementes": usadas, **c}
+                rotulo = (f"{novo}@{sp_n} − {a.base}@{sp_b}" if sp_n != sp_b
+                          else f"{novo} − {a.base}" if sp_b == "dev" else f"{novo} − {a.base} ({sp_b})")
+                res[f"{rotulo}|{fonte}|{nome}"] = {"sementes": usadas, **c}
                 for m in METRICAS:
                     d = c[m]
-                    linhas.append(f"| {novo} − {a.base} | {fonte} | {nome} | {','.join(map(str, usadas))} | "
+                    linhas.append(f"| {rotulo} | {fonte} | {nome} | {','.join(map(str, usadas))} | "
                                   f"{c['n_grupos']} | {m} | {d['base']:.3f} | {d['novo']:.3f} | {d['delta']:+.3f} | "
                                   f"[{d['ic95'][0]:+.3f}; {d['ic95'][1]:+.3f}] | {leitura(m, d)} |")
     tabela = "\n".join(linhas)

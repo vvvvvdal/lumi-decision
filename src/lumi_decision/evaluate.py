@@ -84,21 +84,23 @@ def escolher_exemplos(case, pool: list, k: int, seed: int = 0) -> list:
 
 
 def predict_one(backend, template, case, order, generate=True, max_new_tokens=16, exemplos=(),
-                max_prompt_tokens=0, raciocinio=0, amostras=0, temperatura=1.0, top_p=0.95) -> dict:
+                max_prompt_tokens=0, raciocinio=0, amostras=0, temperatura=1.0, top_p=0.95, variante=0) -> dict:
     options = order_options(case, order)
     exemplos = list(exemplos)
+    pointer = getattr(backend, "pointer", None) is not None
+    if variante and pointer:
+        raise ValueError("H13 (--variante) só com a leitura pelas letras: a pointer head assume o prompt de sempre")
     while True:  # H8: tira exemplos do fim até o prompt caber no teto de tokens
-        prompt = render(template, case, options, exemplos)
+        prompt = render(template, case, options, exemplos, variante=variante)
         ids, cands = candidate_tokens(backend.tokenize, prompt, len(options))
         if not exemplos or not max_prompt_tokens or len(ids) <= max_prompt_tokens:
             break
         exemplos.pop()
-    pointer = getattr(backend, "pointer", None) is not None
     rac = None
     if raciocinio > 0:  # H11: o Lumi raciocina antes; a letra é lida depois do </think>
         if pointer:
             raise ValueError("H11 (--raciocinio) só com a leitura pelas letras")
-        p_gen = prompt_pensando(render(template, case, options, exemplos, pensar=True), prompt)
+        p_gen = prompt_pensando(render(template, case, options, exemplos, pensar=True, variante=variante), prompt)
         fim = backend.tokenize(FIM_THINK)
         toks, texto, ginfo = backend.generate(backend.tokenize(p_gen), raciocinio,
                                               stop_ids=fim if len(fim) == 1 else None)
@@ -213,6 +215,7 @@ def run_fingerprint(args, cases) -> dict:
         **({"exemplos_contexto": args.exemplos_contexto, "max_prompt_tokens": args.max_prompt_tokens}
            if getattr(args, "exemplos_contexto", 0) else {}),
         **({"raciocinio": args.raciocinio, "rac_leitura": "sufixos-v2"} if getattr(args, "raciocinio", 0) else {}),
+        **({"variante_prompt": args.variante} if getattr(args, "variante", 0) else {}),
         **({"rac_amostras": args.raciocinio_amostras, "temperatura": args.temperatura, "top_p": args.top_p}
            if getattr(args, "raciocinio", 0) and getattr(args, "raciocinio_amostras", 0) else {}),
     }
@@ -295,7 +298,8 @@ def cmd_run(args):
                                       exemplos=exemplos.get(case.id, ()), max_prompt_tokens=args.max_prompt_tokens,
                                       raciocinio=getattr(args, "raciocinio", 0),
                                       amostras=getattr(args, "raciocinio_amostras", 0),
-                                      temperatura=getattr(args, "temperatura", 1.0), top_p=getattr(args, "top_p", 0.95))
+                                      temperatura=getattr(args, "temperatura", 1.0), top_p=getattr(args, "top_p", 0.95),
+                                      variante=getattr(args, "variante", 0))
                     f.write(json.dumps(row, ensure_ascii=False) + "\n")
                     f.flush()
                 if (i + 1) % 25 == 0 or i + 1 == len(cases):
@@ -587,6 +591,8 @@ def main(argv=None):
     r.add_argument("--template", default=str(ARTIFACTS_DIR / "lumi" / "chat_template.jinja"))
     r.add_argument("--orders", default="canonical,reversed")
     r.add_argument("--no-generate", action="store_true")
+    r.add_argument("--variante", type=int, default=0,
+                   help="H13: redação do prompt (0 = a de sempre; 4 = a que nunca entra no treino)")
     r.add_argument("--sem-ponteiro", action="store_true", help="HF: ignora a pointer head do adaptador e lê pelas letras")
     r.add_argument("--overwrite", action="store_true")
     r.add_argument("--abster", action="store_true", help="H5: acrescenta a opção 'Não sei' no fim de cada caso")

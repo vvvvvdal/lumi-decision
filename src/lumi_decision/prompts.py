@@ -76,12 +76,56 @@ def _order(case: Case, opts: list, order: str) -> list[tuple[str, str]]:
     raise ValueError(f"ordem desconhecida: {order}")
 
 
-def user_message(case: Case, options: list[tuple[str, str]]) -> str:
+# H13 (aumento de dados no estilo Clef): outras redações do pedido, com os blocos em outra ordem e outro formato
+# das linhas de opção. A resposta continua a mesma (uma letra depois de `<think></think>`). A variante 0 é o prompt
+# de sempre; 1 a 3 entram no treino com `--variar-prompt`; a 4 nunca entra no treino (mede robustez a um prompt novo).
+_VARIANTES = {
+    1: ("Situação:\n{estado}\n\nQuestão: {pergunta}\n\nAlternativas:\n{opcoes}\n\n"
+        "Escolha uma alternativa e responda só com a letra.", "{l}. {d}"),
+    2: ("Pergunta: {pergunta}\n\nInformações disponíveis:\n{estado}\n\nOpções:\n{opcoes}\n\n"
+        "Responda com uma única letra.", "{l}) {d}"),
+    3: ("Leia o caso e decida.\n\n### Caso\n{estado}\n\n### O que decidir\n{pergunta}\n\n### Opções\n{opcoes}\n\n"
+        "Resposta (só a letra):", "{l} - {d}"),
+    4: ("Dados do caso:\n{estado}\n\nAs escolhas possíveis são:\n{opcoes}\n\nCom base nisso: {pergunta}\n"
+        "Indique apenas a letra correspondente.", "({l}) {d}"),
+}
+N_VARIANTES_TREINO = 4   # variantes 0..3 (a 0 é o prompt de sempre)
+VARIANTE_AVALIACAO = 4   # nunca usada no treino
+
+
+def variante_treino(case_id: str, semente: int) -> int:
+    """H13: variante do prompt de um exemplo numa época (determinística por caso e semente da época)."""
+    return random.Random(f"h13v:{semente}:{case_id}").randrange(N_VARIANTES_TREINO)
+
+
+def _reordenar_estado(state: str, rng: random.Random) -> str:
+    """H13: se o estado é um objeto JSON (Telepatia), sorteia a ordem das chaves do topo. Outros textos ficam."""
+    if not state.lstrip().startswith("{"):
+        return state
+    try:
+        d = json.loads(state)
+    except ValueError:
+        return state
+    if not isinstance(d, dict) or len(d) < 2:
+        return state
+    chaves = list(d)
+    rng.shuffle(chaves)
+    return json.dumps({k: d[k] for k in chaves}, ensure_ascii=False, indent=2)
+
+
+def user_message(case: Case, options: list[tuple[str, str]], variante: int = 0, semente: int = 0) -> str:
     if not 2 <= len(options) <= MAX_OPTIONS:
         raise ValueError(f"{case.id}: {len(options)} opções (suportado: 2..{MAX_OPTIONS})")
-    choices = "\n".join(f"{LETTERS[i]}. {desc}" for i, (_, desc) in enumerate(options))
-    return (f"Contexto:\n{case.state}\n\nPergunta: {case.question}\n\n"
-            f"Opções:\n{choices}\n\nResponda apenas com a letra da opção escolhida.")
+    if variante == 0:
+        choices = "\n".join(f"{LETTERS[i]}. {desc}" for i, (_, desc) in enumerate(options))
+        return (f"Contexto:\n{case.state}\n\nPergunta: {case.question}\n\n"
+                f"Opções:\n{choices}\n\nResponda apenas com a letra da opção escolhida.")
+    if variante not in _VARIANTES:
+        raise ValueError(f"variante de prompt desconhecida: {variante} (0..{max(_VARIANTES)})")
+    texto, linha = _VARIANTES[variante]
+    estado = _reordenar_estado(case.state, random.Random(f"h13e:{variante}:{semente}:{case.id}"))
+    opcoes = "\n".join(linha.format(l=LETTERS[i], d=desc) for i, (_, desc) in enumerate(options))
+    return texto.format(estado=estado, pergunta=case.question, opcoes=opcoes)
 
 
 def option_char_ends(prompt: str, case: Case, options: list[tuple[str, str]]) -> list[int]:
@@ -130,12 +174,14 @@ def exemplo_turnos(ex: Case) -> list[dict]:
     return [{"role": "user", "content": user_message(ex, opts)}, {"role": "assistant", "content": letra}]
 
 
-def render(template, case: Case, options: list[tuple[str, str]], exemplos=(), pensar: bool = False) -> str:
+def render(template, case: Case, options: list[tuple[str, str]], exemplos=(), pensar: bool = False,
+           variante: int = 0, semente: int = 0) -> str:
     """Prompt do caso. H8: `exemplos` (casos com gabarito da mesma família) entram antes, como turnos
     user/assistant já respondidos. Sem exemplos, o prompt é exatamente o de sempre.
-    H11: `pensar=True` pede ao template o modo com raciocínio (`<think>` aberto)."""
+    H11: `pensar=True` pede ao template o modo com raciocínio (`<think>` aberto).
+    H13: `variante` > 0 troca a redação do pedido (ver `_VARIANTES`); 0 é o prompt de sempre."""
     msgs = [t for ex in exemplos for t in exemplo_turnos(ex)]
-    msgs.append({"role": "user", "content": user_message(case, options)})
+    msgs.append({"role": "user", "content": user_message(case, options, variante, semente)})
     return template.render(messages=msgs, add_generation_prompt=True, enable_thinking=pensar)
 
 
