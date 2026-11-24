@@ -1,4 +1,4 @@
-# RLCD no Lumi: resumo final dos experimentos (H4 a H9a e pilotos H11 e H11b)
+# RLCD no Lumi: resumo final dos experimentos (H4 a H9a, H12 e pilotos H11 e H11b)
 
 ## A pergunta
 
@@ -111,10 +111,12 @@ quase nunca quando está tudo certo. É um sinal de "caso complicado", não de "
 | H9a | Escolher os exemplos onde o Lumi está em dúvida? | Empate com sortear | Diferença de ±1,9 ponto, com os dois ICs passando pelo zero |
 | H11 (piloto) | O Lumi raciocina antes de decidir? Dá para montar o GRPO? | Raciocina, mas fica superconfiante, e o raciocínio sorteado é longo demais. O critério falha em 2 de 8 pontos: a queda vem dos raciocínios cortados, e a superconfiança, dos que terminam | NLL das vistas da Telepatia de 0,83 para 4,24; 65% dos raciocínios sorteados fecham em 512 tokens |
 | H11b (piloto) | O Lumi escreve uma confiança que serve para o RLCR? | Escreve, mas quase sempre "100". Não separa acerto de erro o bastante (o critério falha em 1 de 3 pontos) | AUROC 0,639 (limite 0,65); a consistência de 4 sorteios chega a 0,769 |
+| H12 | A perda do Clef (entropia cruzada com label smoothing + Brier) é melhor que a log? | Não. Acerta um pouco mais na Telepatia, mas a confiança fica menos honesta no Felhen, mesmo depois da temperatura | Telepatia reservadas: acc +1,8 ponto; Felhen reservadas depois da temperatura: ECE 0,101 contra 0,062 (3 sementes) |
 
 ## Receita final
 
-1. **Recompensa honesta:** usar a perda log, uma regra de pontuação própria (H4).
+1. **Recompensa honesta:** usar a perda log, uma regra de pontuação própria (H4). A perda do Clef não ganhou
+   dela (H12).
 2. **Treino curto na matéria nova:** cerca de 100 exemplos **sorteados** da família nova, mais o mesmo número
    de casos já vistos (replay), por 3 épocas a partir do adaptador da H4 (H9 + H9r).
 3. **Recalibrar:**
@@ -236,11 +238,29 @@ bastante, então a confiança escrita terá de ser aprendida.** Detalhes em
 - **O que fica pronto se alguém retomar:** `scripts/h11_piloto.py`, `scripts/h11b_confianca.py` e os planos em
   `analises/`.
 
+## Fizemos o que o Clef faz?
+
+**Na parte da perda, sim, e ela não ganhou da nossa.** O Clef (Cloudflare, 2026) treina com entropia cruzada com
+label smoothing somada ao Brier. Testamos isso com 3 sementes na H12 (`Resultados H12 - braço Clef.md`):
+
+- acerta 1 a 2 pontos a mais na Telepatia;
+- deixa a confiança menos honesta, porque o label smoothing ensina a nunca dar 100%;
+- a temperatura conserta isso só em parte: nas reservadas do Felhen, ela até piora (ECE 0,101 contra 0,062).
+
+| No Clef | No nosso projeto |
+|---|---|
+| Lê a escolha direto das opções, sem gerar texto | Sim: a leitura das letras |
+| Modelo base congelado + LoRA (posto 256) | Sim, com posto 16 |
+| Cabeça de roteamento treinada junto | Testada pelo Palhares (ponteiro, H3), e foi pior |
+| Entropia cruzada com label smoothing + Brier | Testada na H12: não ganhou da perda log |
+| RLCD como objetivo secundário: crédito parcial para opções vizinhas numa escala, prêmio por saída precisa e penalidade de referência | Em parte: RL sem gabarito (H6) e "não sei" com coleira KL (H5). O crédito parcial só vale para opções em escala, e as nossas não são |
+| Dados sintéticos permutando ordem de campos, prompts e esquemas | Em parte: a ordem das opções é sorteada a cada época. Prompts e formatos, não |
+
 ## Limites
 
 - **Só `dev`.** O `test` oficial não foi tocado.
 - **Sementes:**
-  - têm 3 sementes: H4 (log e Brier), H6 (`bandit_log` com G = 32, job 37691), H9 com k = 100 e H9r;
+  - têm 3 sementes: H4 (log e Brier), H12 (perda do Clef), H6 (`bandit_log` com G = 32, job 37691), H9 com k = 100 e H9r;
   - H5: a comparação com a regra simples (abster pela confiança) usa só a semente 0. O λ = 3 foi repetido com
     3 sementes para ver em que casos ele abstém;
   - os outros braços da H6, H8, H9m e H9a têm só a semente 0.

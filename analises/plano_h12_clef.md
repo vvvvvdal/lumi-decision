@@ -77,3 +77,10 @@ cd /raid/$USER/lumi-decision && srun -p h100n2 --cpus-per-task=2 --mem=8G bash -
 - **Pesos e ε escolhidos por nós,** porque o Clef não publica os dele. Não há busca.
 - **Posto 16, não 256,** e um modelo de 4B, não de 27B.
 - **Só `dev`.**
+
+## Nota (24/11/2026): resultado
+
+Rodou com 3 sementes. Critério: **Clef pior.** A calibração crua piora em 9 de 12 células, e a temperatura
+conserta só em parte: o Clef sai pouco confiante (T = 0,83 no Felhen, contra 1,06 do `log`), e nas reservadas do
+Felhen a temperatura até piora (ECE 0,101 contra 0,062). O único ganho é a acurácia da Telepatia (+1 a +2 pontos).
+A receita final não muda. Detalhes em `resultados/Resultados H12 - braço Clef.md`.
