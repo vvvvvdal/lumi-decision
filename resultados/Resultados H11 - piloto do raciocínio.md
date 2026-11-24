@@ -241,6 +241,10 @@ O AUROC é a chance de um acerto ter confiança maior que um erro: 0,5 é sortei
 
 ## O que isso muda no próximo ciclo
 
+**Atualização (24/11/2026): a trilha do raciocínio foi encerrada depois da H11b.** O motivo está em
+`Resultados finais - RLCD no Lumi.md`, seção "Decisão: parar a trilha do raciocínio". O texto abaixo fica como
+estava, para o caso de alguém retomar.
+
 O caminho continua sendo o **GRPO com raciocínio e recompensa Brier** (RLCR). O sinal (66% dos grupos) e o
 tempo (1,7 h de geração) estão bons. Há dois ajustes antes de montar:
 

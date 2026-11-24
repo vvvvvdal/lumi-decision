@@ -216,6 +216,26 @@ bastante, então a confiança escrita terá de ser aprendida.** Detalhes em
 - **Consequência para o GRPO:** o RLCR terá de ensinar o número desde o começo, com o Brier na confiança
   escrita, ou com um SFT curto do formato antes.
 
+## Decisão: parar a trilha do raciocínio
+
+**Paramos aqui. O Lumi segue com o raciocínio desligado, que é a receita final.**
+
+- **Por que testamos o raciocínio:**
+  - com o raciocínio desligado, a escolha da letra é uma conta direta, e o treino supervisionado (perda log) já
+    dá a direção exata de ajuste;
+  - o RL só estima essa mesma direção com ruído, e por isso empatou na H5 e na H6;
+  - o RL só tem vantagem quando há algo sorteado no meio, como um raciocínio em texto (RLCR).
+- **Por que paramos:**
+  - com raciocínio, ele acerta menos: 0,636 contra 0,727 nos mesmos 88 casos;
+  - fica superconfiante: a leitura das letras sai com 100%, e a confiança escrita, quase sempre "100";
+  - sem raciocínio, a confiança é a mais honesta (AUROC 0,798, ECE 0,066), e a receita final já funciona.
+- **O que fica sem resposta:**
+  - o adaptador `h4_log` foi treinado sem raciocínio, e parte da queda pode vir dele estar fora do formato, e não
+    do raciocínio em si;
+  - o Lumi oficial pensando, sem adaptador, nunca foi medido.
+- **O que fica pronto se alguém retomar:** `scripts/h11_piloto.py`, `scripts/h11b_confianca.py` e os planos em
+  `analises/`.
+
 ## Limites
 
 - **Só `dev`.** O `test` oficial não foi tocado.
@@ -242,13 +262,6 @@ bastante, então a confiança escrita terá de ser aprendida.** Detalhes em
   - rodar o teste limpo da `regra_beneficio` (`scripts/analise_falta_info_fatores.py`) tratando "confiança
     abaixo do limite" como "não sei". Isso mostra se esse "não sei" pega os casos em que falta informação. O
     script precisa de uma opção nova para isso.
-- **GRPO com raciocínio e recompensa Brier (RLCR).** Antes, dois ajustes da H11:
-  - **o comprimento do raciocínio.** Opções:
-    - mais tokens;
-    - recompensa baixa para o raciocínio que não fecha;
-    - pedir no prompt um raciocínio curto.
-  - **a confiança escrita no texto,** como no RLCR, em vez da leitura das letras, que sai com 100% depois do
-    raciocínio. A H11b mostrou que o Lumi escreve o número, mas quase sempre "100". Ele terá de aprender: com
-    o Brier no número desde o começo do GRPO, ou com um SFT curto do formato antes.
-
-  Também falta medir o Lumi oficial sem adaptador com raciocínio.
+- **Só se a trilha do raciocínio for retomada** (ver "Decisão: parar a trilha do raciocínio"):
+  - medir primeiro o Lumi oficial pensando, sem adaptador;
+  - depois, resolver o comprimento do raciocínio e ensinar a confiança escrita antes do GRPO (RLCR).
