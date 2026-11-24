@@ -48,5 +48,5 @@ Antes, é preciso ver quais `runs/res2dev_*` existem.
 ## Como rodar
 
 ```bash
-cd /raid/$USER/lumi-decision && git pull -q && srun -p h100n2 --cpus-per-task=2 --mem=16G bash -c 'source slurm/config.sh && lumi_exec python scripts/analise_sabe.py --sementes 0,1,2 --out analises/sabe_que_nao_sabe.md' && ls -d runs/res2dev_* runs/res2dif_* 2>/dev/null
+cd /raid/$USER/lumi-decision && git pull -q && sbatch slurm/analise_sabe.sbatch
 ```
