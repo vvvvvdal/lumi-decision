@@ -83,3 +83,25 @@ def test_suavizar_nao_mexe_nas_outras_perdas():
     x = lp(0.2, 0.5, 0.3)
     for kind in ("log", "brier", "acerto", "acerto_brier"):
         assert float(lora.option_loss(x, q, kind, 0.3)) == pytest.approx(float(lora.option_loss(x, q, kind)))
+
+
+def test_log_suave_valor_a_mao():
+    q = torch.tensor([0.0, 1.0, 0.0], dtype=torch.float64)
+    x = lp(0.2, 0.5, 0.3)
+    assert float(lora.option_loss(x, q, "log_suave")) == pytest.approx(-math.log(0.5))  # sem suavizar = log
+    ce = -(0.1 * math.log(0.2) + 0.8 * math.log(0.5) + 0.1 * math.log(0.3))
+    assert float(lora.option_loss(x, q, "log_suave", 0.3)) == pytest.approx(ce)  # sem o Brier
+
+
+def test_log_suave_tem_otimo_no_alvo_suavizado():
+    q = torch.tensor([0.6, 0.3, 0.1], dtype=torch.float64)
+    q_s = 0.9 * q + 0.1 / 3
+    assert torch.allclose(_otimo("log_suave", q, suavizar=0.1), q_s, atol=0.02)
+
+
+def test_brier_segura_parte_do_smoothing():
+    """Com o mesmo smoothing, somar o Brier (alvo original) deixa o ótimo mais perto de q do que o smoothing só."""
+    q = torch.tensor([0.6, 0.3, 0.1], dtype=torch.float64)
+    so = _otimo("log_suave", q, suavizar=0.1)
+    com = _otimo("log_brier", q, suavizar=0.1)
+    assert float(so[0]) < float(com[0]) < 0.6

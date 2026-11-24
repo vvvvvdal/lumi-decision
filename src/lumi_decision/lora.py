@@ -331,7 +331,7 @@ def option_scores(model, batch: list[Example], pad_id: int, head_fp32=None, poin
     return [logp[i, e.cands] + z[i] for i, e in enumerate(batch)]
 
 
-LOSSES = ("log", "brier", "acerto", "acerto_brier", "log_brier", "bandit_log", "bandit_acerto")
+LOSSES = ("log", "brier", "acerto", "acerto_brier", "log_brier", "log_suave", "bandit_log", "bandit_acerto")
 
 
 def bandit_loss(lp_opt, q, kind: str = "bandit_log", n_samples: int = 8, clip: float = 10.0, explorar: float = 0.0,
@@ -385,7 +385,9 @@ def option_loss(lp_opt, q, kind: str = "log", suavizar: float = 0.0):
     - `acerto_brier`: acerto + Brier, como a recompensa do RLCR (arXiv:2507.16806).
     - `log_brier` (H12, receita do Clef): entropia cruzada com label smoothing + Brier, pesos 1 e 1. O alvo da
       entropia cruzada é suavizado, q_s = (1 - suavizar)·q + suavizar/K; o Brier usa o alvo original. Com
-      `suavizar` = 0 é regra própria; com > 0 o ótimo fica entre q e o uniforme. Os outros tipos ignoram `suavizar`.
+      `suavizar` = 0 é regra própria; com > 0 o ótimo fica entre q e o uniforme.
+    - `log_suave` (H12b): só a entropia cruzada com label smoothing, sem o Brier. O ótimo é exatamente q_s. Serve
+      para separar as duas peças do Clef. Os outros tipos ignoram `suavizar`.
     Com alvo suave (`gold_dist`), q é a distribuição de referência; com alvo duro, o one-hot do gabarito.
     """
     if kind == "log":
@@ -400,6 +402,9 @@ def option_loss(lp_opt, q, kind: str = "log", suavizar: float = 0.0):
     if kind == "log_brier":
         q_s = (1.0 - suavizar) * q + suavizar / q.shape[0]
         return -(q_s * lp_opt).sum() + ((p - q) ** 2).sum()
+    if kind == "log_suave":
+        q_s = (1.0 - suavizar) * q + suavizar / q.shape[0]
+        return -(q_s * lp_opt).sum()
     raise ValueError(f"perda desconhecida: {kind} (opções: {', '.join(LOSSES)})")
 
 
