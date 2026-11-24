@@ -1,4 +1,4 @@
-# RLCD no Lumi: resumo final dos experimentos (H4 a H9a, H12 e pilotos H11 e H11b)
+# RLCD no Lumi: resumo final dos experimentos (H4 a H9a, H12, H12b, "sabe que não sabe" e pilotos H11 e H11b)
 
 ## A pergunta
 
@@ -32,14 +32,14 @@ eles não são a mesma coisa.
 
 ## Ele sabe o que não sabe?
 
-**Resposta curta: mais ou menos, e só depois de aprender a matéria.**
+**Resposta curta: sim, depois de aprender a matéria** (medido caso a caso em `Resultados - sabe que não sabe.md`).
 
 - **No "não sei" pela confiança (o que a gente usa):** ele manda para uma pessoa os casos mais difíceis.
-  - Depois do treino curto nas faturas novas, ele erra 10% dos casos que responde e erraria uns 45% dos que
-    passa adiante.
+  - Depois da receita final, nas faturas novas, ele erra 10% dos casos que responde e erraria 47% dos que
+    passa adiante. A confiança separa acerto de erro dentro da mesma família (AUROC 0,83 na Telepatia e 0,75 no
+    Felhen).
   - Mas não é perfeito: em mais ou menos metade dos casos que ele passa adiante, ele teria acertado.
-  - Antes do treino curto, ele não sabia separar. Os casos que ele passava adiante eram tão difíceis quanto casos
-    escolhidos ao acaso.
+  - Antes do treino curto, a separação era fraca (AUROC 0,59 na Telepatia).
 - **No "não sei" como opção (H5):** ele diz "não sei" quando o caso parece complicado, mas não percebe quando
   falta uma informação de verdade.
 - **O que ainda não sabemos:** se o "não sei" pela confiança aparece porque falta informação no caso ou só
@@ -57,27 +57,26 @@ Há duas razões diferentes para um caso merecer um "não sei":
 
 **1. Regra simples: o "não sei" pega os casos que ele erraria?**
 
-O erro nos casos mandados para uma pessoa sai de uma conta aproximada com as médias da H9b. Ainda não foi
-medido caso a caso. "Erro se fosse sorteado" é o erro de mandar para uma pessoa casos escolhidos ao acaso, ou
-seja, o erro geral do modelo (1 − acurácia).
+Medido caso a caso (`scripts/analise_sabe.py`), com a recalibração da receita final (25 rótulos, alvo de 10%),
+3 sementes e IC 95% por bootstrap de grupos. "AUROC dentro da família" é a chance de um acerto ter confiança
+maior que um erro, sem misturar matérias: 0,5 é o acaso.
 
-| Matéria nova | Responde | Erro nos que responde | Erro nos "não sei" (aprox.) | Erro se fosse sorteado |
-|---|---:|---:|---:|---:|
-| Faturas (Telepatia), antes do treino curto | 7% | 18% | ~43% | 42% |
-| Faturas (Telepatia), depois | 68% | 10% | ~45% | 21% |
-| Felhen, antes | 16% | 19% | ~52% | 47% |
-| Felhen, depois | 36% | 15% | ~47% | 36% |
-
-A conta, na linha das faturas depois do treino:
-- erro geral: 1 − 0,787 = 0,213;
-- erros entre os respondidos: 0,68 × 0,10 = 0,068;
-- erro nos "não sei": (0,213 − 0,068) / 0,32 ≈ 0,45.
+| Matéria nova | Responde | Erro nos que responde | Erro nos "não sei" | AUROC dentro da família |
+|---|---:|---|---|---|
+| Faturas (Telepatia), `h4_log` | 7% | 19% [3; 32] | 43% [39; 48] | 0,59 [0,56; 0,62] |
+| Faturas (Telepatia), receita final | 72% | 10% [6; 15] | 47% [39; 53] | 0,83 [0,80; 0,85] |
+| Felhen, `h4_log` | 16% | 20% [5; 33] | 53% [47; 59] | 0,69 [0,64; 0,73] |
+| Felhen, receita final | 35% | 16% [7; 26] | 45% [38; 53] | 0,75 [0,71; 0,79] |
 
 **Leitura:**
-- **Antes de aprender a matéria nova, quase não separava.** Os casos mandados para uma pessoa erravam quase o
-  mesmo que casos sorteados (43% contra 42%).
-- **Depois do treino curto, separa.** Os "não sei" concentram os erros: 45%, contra 21% de um sorteio.
+- **Depois da receita, separa.** Os "não sei" erram de 2,8 a 4,7 vezes mais que as respostas, com os ICs separados, e
+  o AUROC dentro da família passa de 0,7 nas duas fontes.
+- **Pelo motivo certo:** o AUROC dentro da família é igual ao geral, então o "não sei" não está só separando
+  matéria difícil de fácil (o problema da confiança escrita na H11b).
+- **Antes do treino curto, a separação era fraca** (AUROC 0,59 na Telepatia).
 - **Mas não é perfeito.** Cerca de metade dos casos que ele manda para uma pessoa ele teria acertado.
+- **Conferência:** o Felhen deu 35% de respostas, e o número publicado antes era 37%. O próprio
+  `h9_recalibrar.py` dá 35% hoje nos mesmos arquivos. A origem do 37% está sendo conferida.
 
 **2. "Não sei" como opção (H5): ele reage à falta de informação?**
 
@@ -112,11 +111,14 @@ quase nunca quando está tudo certo. É um sinal de "caso complicado", não de "
 | H11 (piloto) | O Lumi raciocina antes de decidir? Dá para montar o GRPO? | Raciocina, mas fica superconfiante, e o raciocínio sorteado é longo demais. O critério falha em 2 de 8 pontos: a queda vem dos raciocínios cortados, e a superconfiança, dos que terminam | NLL das vistas da Telepatia de 0,83 para 4,24; 65% dos raciocínios sorteados fecham em 512 tokens |
 | H11b (piloto) | O Lumi escreve uma confiança que serve para o RLCR? | Escreve, mas quase sempre "100". Não separa acerto de erro o bastante (o critério falha em 1 de 3 pontos) | AUROC 0,639 (limite 0,65); a consistência de 4 sorteios chega a 0,769 |
 | H12 | A perda do Clef (entropia cruzada com label smoothing + Brier) é melhor que a log? | Não. Acerta um pouco mais na Telepatia, mas a confiança fica menos honesta no Felhen, mesmo depois da temperatura | Telepatia reservadas: acc +1,8 ponto; Felhen reservadas depois da temperatura: ECE 0,101 contra 0,062 (3 sementes) |
+| H12b | Na perda do Clef, o que faz o quê? | O smoothing traz o custo na calibração. O Brier traz o ganho de acurácia | `logbrier`: Telepatia reservadas +2,2 pontos, com T = 1,05 (a do Clef é 0,83) |
+| Sabe que não sabe | O "não sei" da receita pega os casos que ele erraria? | Sim, dentro da mesma família | Telepatia: erra 10% quando responde, 47% nos "não sei"; AUROC 0,83 (antes 0,59) |
 
 ## Receita final
 
 1. **Recompensa honesta:** usar a perda log, uma regra de pontuação própria (H4). A perda do Clef não ganhou
-   dela (H12).
+   dela (H12). A versão sem smoothing (`log_brier`) acerta mais na Telepatia sem estragar a calibração (H12b),
+   mas ainda não foi testada dentro da receita.
 2. **Treino curto na matéria nova:** cerca de 100 exemplos **sorteados** da família nova, mais o mesmo número
    de casos já vistos (replay), por 3 épocas a partir do adaptador da H4 (H9 + H9r).
 3. **Recalibrar:**
@@ -247,12 +249,16 @@ label smoothing somada ao Brier. Testamos isso com 3 sementes na H12 (`Resultado
 - deixa a confiança menos honesta, porque o label smoothing ensina a nunca dar 100%;
 - a temperatura conserta isso só em parte: nas reservadas do Felhen, ela até piora (ECE 0,101 contra 0,062).
 
+A H12b separou as duas peças (`Resultados H12b - smoothing ou Brier.md`): o custo vem do smoothing, e o ganho
+da Telepatia vem do Brier. A entropia cruzada + Brier sem smoothing (`log_brier`) acerta +2,2 pontos nas
+reservadas da Telepatia sem o custo do smoothing.
+
 | No Clef | No nosso projeto |
 |---|---|
 | Lê a escolha direto das opções, sem gerar texto | Sim: a leitura das letras |
 | Modelo base congelado + LoRA (posto 256) | Sim, com posto 16 |
 | Cabeça de roteamento treinada junto | Testada pelo Palhares (ponteiro, H3), e foi pior |
-| Entropia cruzada com label smoothing + Brier | Testada na H12: não ganhou da perda log |
+| Entropia cruzada com label smoothing + Brier | Testada na H12: não ganhou da perda log. Sem o smoothing (H12b), ganha na acurácia da Telepatia e falta testar na receita |
 | RLCD como objetivo secundário: crédito parcial para opções vizinhas numa escala, prêmio por saída precisa e penalidade de referência | Em parte: RL sem gabarito (H6) e "não sei" com coleira KL (H5). O crédito parcial só vale para opções em escala, e as nossas não são |
 | Dados sintéticos permutando ordem de campos, prompts e esquemas | Em parte: a ordem das opções é sorteada a cada época. Prompts e formatos, não |
 
@@ -260,7 +266,7 @@ label smoothing somada ao Brier. Testamos isso com 3 sementes na H12 (`Resultado
 
 - **Só `dev`.** O `test` oficial não foi tocado.
 - **Sementes:**
-  - têm 3 sementes: H4 (log e Brier), H12 (perda do Clef), H6 (`bandit_log` com G = 32, job 37691), H9 com k = 100 e H9r;
+  - têm 3 sementes: H4 (log e Brier), H12 e H12b (perdas do Clef), H6 (`bandit_log` com G = 32, job 37691), H9 com k = 100 e H9r;
   - H5: a comparação com a regra simples (abster pela confiança) usa só a semente 0. O λ = 3 foi repetido com
     3 sementes para ver em que casos ele abstém;
   - os outros braços da H6, H8, H9m e H9a têm só a semente 0.
@@ -276,12 +282,11 @@ label smoothing somada ao Brier. Testamos isso com 3 sementes na H12 (`Resultado
 - Confirmar a receita final no `test` oficial.
 - Testar com mais famílias reservadas e ver se o ganho se repete.
 - Ver se o RL de abstenção (H5) faz diferença quando o modelo já sabe a matéria, ou seja, depois da H9.
-- **Medir se ele sabe o que não sabe**, sem GPU e com as predições que já existem:
-  - no `h4_log` e no `h9r`, medir caso a caso o erro nos casos respondidos e nos "não sei" pela confiança, com
-    intervalo de confiança, e o AUROC (a chance de um acerto ter confiança maior que um erro);
-  - rodar o teste limpo da `regra_beneficio` (`scripts/analise_falta_info_fatores.py`) tratando "confiança
-    abaixo do limite" como "não sei". Isso mostra se esse "não sei" pega os casos em que falta informação. O
-    script precisa de uma opção nova para isso.
+- Testar a perda `log_brier` dentro da receita final (H9r a partir do `h4_logbrier` + recalibração).
+- Conferir de onde veio o 37% publicado para o Felhen na receita final (hoje a mesma conta dá 35%).
+- **Rodar o teste limpo da `regra_beneficio`** (`scripts/analise_falta_info_fatores.py`) tratando "confiança
+  abaixo do limite" como "não sei". Isso mostra se esse "não sei" pega os casos em que falta informação ou só os
+  que o modelo não aprendeu. O script precisa de uma opção nova para isso.
 - **Só se a trilha do raciocínio for retomada** (ver "Decisão: parar a trilha do raciocínio"):
   - medir primeiro o Lumi oficial pensando, sem adaptador;
   - depois, resolver o comprimento do raciocínio e ensinar a confiança escrita antes do GRPO (RLCR).
