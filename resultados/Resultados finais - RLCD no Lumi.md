@@ -1,4 +1,4 @@
-# RLCD no Lumi: resumo final dos experimentos (H4 a H9a e piloto H11)
+# RLCD no Lumi: resumo final dos experimentos (H4 a H9a e pilotos H11 e H11b)
 
 ## A pergunta
 
@@ -110,6 +110,7 @@ quase nunca quando está tudo certo. É um sinal de "caso complicado", não de "
 | H9m | Misturar os adaptadores em vez de treinar de novo? | É uma troca: não esquece, mas ensina menos | Felhen +8,7, contra +13,6 |
 | H9a | Escolher os exemplos onde o Lumi está em dúvida? | Empate com sortear | Diferença de ±1,9 ponto, com os dois ICs passando pelo zero |
 | H11 (piloto) | O Lumi raciocina antes de decidir? Dá para montar o GRPO? | Raciocina, mas fica superconfiante, e o raciocínio sorteado é longo demais. O critério falha em 2 de 8 pontos: a queda vem dos raciocínios cortados, e a superconfiança, dos que terminam | NLL das vistas da Telepatia de 0,83 para 4,24; 65% dos raciocínios sorteados fecham em 512 tokens |
+| H11b (piloto) | O Lumi escreve uma confiança que serve para o RLCR? | Escreve, mas quase sempre "100". Não separa acerto de erro o bastante (o critério falha em 1 de 3 pontos) | AUROC 0,639 (limite 0,65); a consistência de 4 sorteios chega a 0,769 |
 
 ## Receita final
 
@@ -193,6 +194,28 @@ Detalhes em `Resultados H11 - piloto do raciocínio.md`.
   estragou a honestidade na H4. Antes do GRPO, é preciso resolver o comprimento e tirar a confiança de algo que
   o modelo consiga graduar, como a confiança escrita do RLCR.
 
+## Piloto H11b: escrever a confiança
+
+**Resposta curta: ele escreve o número, mas quase sempre "100". O número não separa os acertos dos erros o
+bastante, então a confiança escrita terá de ser aprendida.** Detalhes em
+`Resultados H11 - piloto do raciocínio.md`.
+
+- **Como foi:** nos mesmos 88 casos do piloto H11, depois da letra, um turno novo pergunta "Qual é a
+  probabilidade, de 0 a 100, de que a sua resposta esteja correta?".
+- **O critério falha em 1 de 3 pontos:**
+  - escreve um número em 100% das respostas;
+  - o valor mais comum, "100", aparece em 77% (limite: 80%);
+  - mas o AUROC fica em 0,639 (limite: 0,65).
+- **Na prática, ele escreve "100" ou "quase 100".** 85 dos 88 números ficam entre 90 e 100. Ele diz cerca de
+  95% e acerta 64%.
+- **A separação que aparece vem da matéria, não do caso.** Dentro de cada grupo de casos, o AUROC fica entre
+  0,46 e 0,59, quase um sorteio. Os poucos números baixos ficam na matéria mais difícil, as reservadas do
+  Felhen.
+- **O que separa melhor depois do raciocínio é a consistência:** quando 4 raciocínios sorteados chegam a letras
+  diferentes, ele costuma errar (AUROC 0,769, ECE 0,125).
+- **Consequência para o GRPO:** o RLCR terá de ensinar o número desde o começo, com o Brier na confiança
+  escrita, ou com um SFT curto do formato antes.
+
 ## Limites
 
 - **Só `dev`.** O `test` oficial não foi tocado.
@@ -225,6 +248,7 @@ Detalhes em `Resultados H11 - piloto do raciocínio.md`.
     - recompensa baixa para o raciocínio que não fecha;
     - pedir no prompt um raciocínio curto.
   - **a confiança escrita no texto,** como no RLCR, em vez da leitura das letras, que sai com 100% depois do
-    raciocínio.
+    raciocínio. A H11b mostrou que o Lumi escreve o número, mas quase sempre "100". Ele terá de aprender: com
+    o Brier no número desde o começo do GRPO, ou com um SFT curto do formato antes.
 
   Também falta medir o Lumi oficial sem adaptador com raciocínio.

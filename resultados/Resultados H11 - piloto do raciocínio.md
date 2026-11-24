@@ -183,6 +183,62 @@ medir dúvida.
 - No RLCR, o modelo **escreve uma confiança** (um número) depois da resposta, e a recompensa soma o acerto e o
   Brier dessa confiança. É uma confiança que o modelo consegue graduar, o que parece o caminho mais seguro.
 
+## H11b: o Lumi escreve uma confiança que serve? (feito depois do piloto)
+
+**Resposta curta: ele escreve o número, mas quase sempre "100". O número não separa os acertos dos erros o
+bastante, e o critério falha em 1 de 3 pontos.**
+
+- **Plano e critério,** registrados antes de rodar: `analises/plano_h11b_confianca.md`.
+- **Run:** job 37901, relatório `analises/h11b.md` (no cluster).
+- **Desenho:** os mesmos 88 casos e raciocínios do piloto. Depois da letra, um turno novo pergunta "Qual é a
+  probabilidade, de 0 a 100, de que a sua resposta esteja correta?".
+
+| critério | limite | resultado | |
+|---|---|---|---|
+| Escreve: respostas com número de 0 a 100 | ≥ 90% | 100% | passa |
+| Gradua: o valor mais comum | ≤ 80% das respostas | 77% (valor 100) | passa |
+| Separa: AUROC da confiança escrita | ≥ 0,65 | 0,639 | **não passa** |
+
+**Quatro fontes de confiança nos mesmos casos (guloso):**
+
+| fonte de confiança | acurácia da decisão | AUROC | confiança média: acerta / erra | ECE | Brier |
+|---|---:|---:|---|---:|---:|
+| confiança escrita | 0,636 | 0,639 | 0,97 / 0,91 | 0,337 | 0,334 |
+| letras depois do raciocínio | 0,636 | 0,592 | 0,97 / 0,91 | 0,324 | 0,317 |
+| consistência dos 4 sorteios | 0,636 | 0,769 | 0,78 / 0,41 | 0,125 | 0,195 |
+| letras sem raciocínio (H4; outra decisão) | 0,727 | 0,798 | 0,75 / 0,54 | 0,066 | 0,160 |
+
+O AUROC é a chance de um acerto ter confiança maior que um erro: 0,5 é sorteio, 1,0 é perfeito.
+
+**Leitura:** olhamos se o número muda pelo motivo que a gente acha.
+- **O "gradua" passou só no papel.** 85 dos 88 números ficam entre 90 e 100, e só 4 valores diferentes
+  aparecem. Na prática, ele escreve "100" ou "quase 100".
+- **Ele diz cerca de 95% e acerta 64%** (ECE 0,34). A confiança escrita repete a das letras, com as mesmas médias
+  (0,97 quando acerta, 0,91 quando erra).
+- **O AUROC de 0,639 vem mais da diferença entre grupos do que de julgar cada caso.**
+  - Dentro de cada recorte (fonte e vistas ou reservadas), ele fica entre 0,46 e 0,59.
+  - Pelas médias, os poucos números baixos ficam nas reservadas do Felhen, onde ele também acerta menos (44%).
+  - Ou seja, ele percebe um pouco que aquela matéria é mais difícil, mas não qual caso vai errar.
+- **A melhor confiança depois do raciocínio é a consistência dos 4 sorteios** (AUROC 0,769, ECE 0,125). Quando
+  os raciocínios chegam a letras diferentes, ele costuma errar. O custo são 4 raciocínios por caso.
+- **As letras sem raciocínio (H4) continuam as mais honestas** (AUROC 0,798, ECE 0,066) e acertam mais (0,727
+  contra 0,636). Mas elas julgam outra decisão, a de sempre, sem raciocínio.
+- **No sorteio:**
+  - a confiança escrita muda dentro do grupo de 4 em 45% dos grupos;
+  - a recompensa do RLCR tem sinal em 55% dos grupos, contra 66% com o Brier das letras.
+
+**O que isso muda:** a leitura registrada para este resultado é "escreve, mas não separa". O formato funciona:
+100% de números, 0,18 s por resposta. Mas a confiança escrita terá de ser **aprendida**. Caminhos:
+- o GRPO estilo RLCR com o Brier no número escrito desde o começo;
+- um SFT curto do formato antes. Uma ideia ainda não testada é usar a consistência dos 4 sorteios como alvo do
+  número escrito, porque é ela que separa melhor.
+
+**Limites da H11b:**
+- **88 casos e 32 erros no guloso.** O AUROC tem erro de cerca de ±0,06, então 0,639 e 0,65 não se distinguem
+  de verdade. O que pesa mais é o número quase sempre "100" e a separação perto de 0,5 dentro de cada recorte.
+- **A pergunta vem depois, num turno novo.** No RLCR, o número sai na mesma geração do raciocínio.
+- **O adaptador `h4_log` nunca viu um segundo turno.**
+
 ## O que isso muda no próximo ciclo
 
 O caminho continua sendo o **GRPO com raciocínio e recompensa Brier** (RLCR). O sinal (66% dos grupos) e o
@@ -194,7 +250,8 @@ tempo (1,7 h de geração) estão bons. Há dois ajustes antes de montar:
    - pedir no prompt um raciocínio curto.
 2. **De onde vem a confiança:** depois de um raciocínio que termina, a leitura das letras sai com 100%. Para o
    Brier ensinar honestidade, a confiança precisa vir de algo que o modelo consiga graduar, como a confiança
-   escrita do RLCR.
+   escrita do RLCR. A H11b mostrou que, perguntada depois, a confiança escrita também sai quase sempre 100:
+   ela terá de ser aprendida.
 
 ## Limites
 

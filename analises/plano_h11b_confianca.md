@@ -94,3 +94,20 @@ que muda com a dúvida e é mais baixo quando ele erra.
 
 Nada muda no desenho. O piloto inteiro roda com `sbatch slurm/h11b_confianca.sbatch` (88 casos, pastas
 `runs/h11b_*`).
+
+## Nota (24/11/2026): piloto inteiro (job 37901, `analises/h11b.md`)
+
+**O critério falha em 1 de 3 pontos:**
+- **Escreve:** 100% das respostas trazem um número (passa);
+- **Gradua:** o valor mais comum, "100", aparece em 77% (passa, perto do limite de 80%);
+- **Separa:** AUROC 0,639, abaixo de 0,65 (não passa).
+
+**Na leitura registrada, é o caso "escreve, mas não separa":** o formato funciona, e a confiança escrita terá de
+ser aprendida, com o GRPO usando o Brier no número desde o começo ou com um SFT curto do formato antes.
+
+**O que pesa, além do critério:**
+- **o "gradua" passa só no papel:** 85 dos 88 números ficam entre 90 e 100, com 4 valores diferentes;
+- **a separação vem mais da diferença entre grupos:** dentro de cada recorte, o AUROC fica entre 0,46 e 0,59;
+- **a consistência dos 4 sorteios é a melhor fonte depois do raciocínio** (AUROC 0,769, ECE 0,125).
+
+Resultado completo em `resultados/Resultados H11 - piloto do raciocínio.md`.
