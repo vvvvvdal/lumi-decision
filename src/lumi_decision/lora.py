@@ -33,7 +33,7 @@ from collections import Counter
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from .data import LOADERS, TRAIN_ONLY, drop_eval_overlap, load_cases, load_config, training_cases
+from .data import LOADERS, SPLITS_CONFIG, TRAIN_ONLY, drop_eval_overlap, load_cases, load_config, training_cases
 from .prompts import (ABSTER, LETTERS, candidate_tokens, option_char_ends, option_token_positions, order_options,
                       render, variante_treino, with_abstain)
 from .schema import Case
@@ -185,6 +185,31 @@ def target_vector(case: Case, options, soft: bool) -> list[float]:
     return [1.0 if i == case.gold else 0.0 for i in ids]
 
 
+ESCALAS_CONFIG = SPLITS_CONFIG.parent / "escalas.toml"
+
+
+def load_escalas(path: Path = ESCALAS_CONFIG) -> list[list[str]]:
+    """H15: perguntas em ESCALA (`configs/escalas.toml`). Uma escala vale para o caso cujo conjunto de ids de opção
+    é exatamente o dela; a ordem da lista é a ordem natural (ex.: falso < impreciso < verdadeiro)."""
+    import tomllib
+
+    if not path.exists():
+        return []
+    return [list(e["ordem"]) for e in tomllib.loads(path.read_text(encoding="utf-8")).get("escala", [])]
+
+
+def credito_parcial(case: Case, options, target: list[float], escalas: list[list[str]], meio: float = 0.5):
+    """H15 (RLCD do Clef): recompensa de cada opção apresentada. Numa escala (e com gabarito duro), 1 no
+    gabarito, `meio` na opção vizinha e 0 no resto. Fora das escalas, ou com alvo suave, a recompensa é o
+    próprio alvo (o acerto)."""
+    ids = [o[0] for o in options]
+    esc = next((e for e in escalas if set(e) == set(ids)), None)
+    if esc is None or case.gold_dist:
+        return list(target)
+    g = esc.index(case.gold)
+    return [1.0 if i == case.gold else (meio if abs(esc.index(i) - g) == 1 else 0.0) for i in ids]
+
+
 @dataclass
 class Example:
     case_id: str
@@ -195,6 +220,7 @@ class Example:
     gold_pos: int
     opt_pos: list | None = None  # E4: token do fim de cada opção (chaves da pointer head)
     abster: bool = False  # H5: a última opção é ABSTER
+    credito: list | None = None  # H15: recompensa de cada opção (crédito parcial na escala); None = o alvo
 
 
 class Encoder:
@@ -202,9 +228,10 @@ class Encoder:
     número de opções e reaproveita os ids depois (o prompt sempre termina em `<think></think>`).
     Com `offsets` (texto -> (ids, offsets)), também localiza o token do fim de cada opção (E4)."""
 
-    def __init__(self, tokenize, template, n_checks: int = 20, offsets=None):
+    def __init__(self, tokenize, template, n_checks: int = 20, offsets=None, escalas=None):
         self.tokenize, self.template, self.n_checks = tokenize, template, n_checks
         self.offsets = offsets
+        self.escalas = escalas  # H15: com uma lista (mesmo vazia), cada exemplo leva o crédito parcial
         self.cache, self.checked = {}, Counter()
 
     def __call__(self, case: Case, order: str, soft: bool, variante: int = 0, semente: int = 0) -> Example:
@@ -230,8 +257,9 @@ class Encoder:
             ids = list(ids2)
             pos = option_token_positions(offs, prompt, option_char_ends(prompt, case, options))
         tgt = target_vector(case, options, soft)
+        cred = credito_parcial(case, options, tgt, self.escalas) if self.escalas is not None else None
         return Example(case.id, case.family, ids, cands, tgt, [o[0] for o in options].index(case.gold), pos,
-                       abster=options[-1][0] == ABSTER[0])
+                       abster=options[-1][0] == ABSTER[0], credito=cred)
 
 
 def plan_microbatches(examples: list[Example], token_budget: int, max_micro: int, seed: int,
@@ -337,7 +365,8 @@ def option_scores(model, batch: list[Example], pad_id: int, head_fp32=None, poin
     return [logp[i, e.cands] + z[i] for i, e in enumerate(batch)]
 
 
-LOSSES = ("log", "brier", "acerto", "acerto_brier", "log_brier", "log_suave", "bandit_log", "bandit_acerto")
+LOSSES = ("log", "brier", "acerto", "acerto_brier", "log_brier", "log_suave", "bandit_log", "bandit_acerto",
+          "rlcd", "rlcd_amostrado")
 
 
 def bandit_loss(lp_opt, q, kind: str = "bandit_log", n_samples: int = 8, clip: float = 10.0, explorar: float = 0.0,
@@ -414,6 +443,36 @@ def option_loss(lp_opt, q, kind: str = "log", suavizar: float = 0.0):
     raise ValueError(f"perda desconhecida: {kind} (opções: {', '.join(LOSSES)})")
 
 
+def rlcd_loss(lp_opt, q, credito, kind: str = "rlcd", lam: float = 1.0, beta: float = 0.0, lp_ref=None,
+              n_samples: int = 8, generator=None):
+    """H15: o RLCD do Clef pela descrição publicada (fórmula não publicada), sobre a leitura das letras.
+
+    perda = log score (a base honesta, regra própria)
+          - lam · recompensa esperada, com recompensa = `credito` (1 no gabarito, 0,5 na vizinha da escala, 0 no
+            resto; fora das escalas, o acerto)
+          + beta · KL(p || p_ref), a penalidade de referência (p_ref = o modelo no começo deste treino).
+    - `rlcd`: a recompensa esperada exata, sum_a p(a)·R(a). A leitura é uma passada só, então ela é derivável.
+    - `rlcd_amostrado`: o mesmo objetivo por REINFORCE (sorteia `n_samples` opções, base deixa-um-de-fora, como o
+      `bandit_acerto` da H6). Em média, o gradiente é o mesmo da versão exata; só tem ruído a mais.
+    Sozinha, a recompensa esperada não é regra própria (puxa para a superconfiança, H4); o log score e o KL a
+    seguram. Com lam = 0 e beta = 0, é a perda `log`."""
+    import torch
+
+    total = -(q * lp_opt).sum()
+    R = torch.as_tensor(credito, device=lp_opt.device, dtype=lp_opt.dtype) if credito is not None else q
+    if lam:
+        if kind == "rlcd":
+            total = total - lam * (lp_opt.exp() * R).sum()
+        elif kind == "rlcd_amostrado":
+            total = total + lam * bandit_loss(lp_opt, R, "bandit_acerto", n_samples=n_samples, generator=generator)
+        else:
+            raise ValueError(f"perda RLCD desconhecida: {kind}")
+    if beta and lp_ref is not None:
+        lpr = lp_ref.detach() - torch.logsumexp(lp_ref.detach(), dim=0)
+        total = total + beta * (lp_opt.exp() * (lp_opt - lpr)).sum()
+    return total
+
+
 def abstain_loss(lp, target, gold_pos: int, lam: float, n_samples: int = 8, alpha: float = 1.0,
                  beta: float = 0.0, lp_ref=None, generator=None):
     """H5: perda de UM exemplo cuja última opção é ABSTER. `lp` = notas das K+1 letras (não normalizadas).
@@ -480,7 +539,7 @@ def batch_loss_abster(model, batch: list[Example], pad_id: int, head_fp32, cfg: 
 
 def batch_loss(model, batch: list[Example], pad_id: int, head_fp32=None, pointer=None, loss: str = "log",
                bandit_clip: float = 10.0, bandit_amostras: int = 8, bandit_explorar: float = 0.0,
-               suavizar: float = 0.0):
+               suavizar: float = 0.0, rlcd_lambda: float = 1.0, rlcd_beta: float = 0.0, ref_scores=None):
     """(soma das perdas, acertos, massa média das letras no vocabulário).
 
     Perda = entropia cruzada entre o alvo e a distribuição RENORMALIZADA entre as opções apresentadas
@@ -490,14 +549,19 @@ def batch_loss(model, batch: list[Example], pad_id: int, head_fp32=None, pointer
     """
     import torch
 
+    # H15: a referência ANTES do forward com gradiente. Ela troca os pesos LoRA no lugar (e devolve), o que
+    # quebraria o backward se o grafo do forward principal já tivesse guardado esses pesos.
+    refs = ref_scores(batch) if (ref_scores is not None and loss.startswith("rlcd") and rlcd_beta) else [None] * len(batch)
     lps = option_scores(model, batch, pad_id, head_fp32, pointer)
     losses, hits, mass = [], 0, 0.0
-    for lp, e in zip(lps, batch):
+    for lp, ref, e in zip(lps, refs, batch):
         if pointer is not None and not getattr(pointer, "residual", False):
             lp = torch.log_softmax(lp, dim=0)
         lp_opt = lp - torch.logsumexp(lp, dim=0)
         q = torch.tensor(e.target, device=lp.device, dtype=lp.dtype)
-        if loss.startswith("bandit_"):  # H6: só o resultado da opção sorteada
+        if loss.startswith("rlcd"):  # H15: log + crédito parcial esperado + penalidade de referência
+            losses.append(rlcd_loss(lp_opt, q, e.credito, loss, rlcd_lambda, rlcd_beta, ref, bandit_amostras))
+        elif loss.startswith("bandit_"):  # H6: só o resultado da opção sorteada
             losses.append(bandit_loss(lp_opt, q, loss, n_samples=bandit_amostras, clip=bandit_clip,
                                       explorar=bandit_explorar))
         else:
@@ -562,6 +626,8 @@ class TrainConfig:
     bandit_clip: float = 10.0   # H6: corte do peso 1/pi do bandit_log
     bandit_amostras: int = 8    # H6: opções sorteadas por caso (G)
     bandit_explorar: float = 0.0  # H6d: eps de exploração (sorteia de (1-eps)·pi + eps/K; 0 = desligado)
+    rlcd_lambda: float = 1.0    # H15: peso da recompensa esperada (crédito parcial) na perda rlcd
+    rlcd_beta: float = 0.02     # H15: peso do KL para o modelo do começo do treino (penalidade de referência)
     abster_custo: float = 0.0   # H5: > 0 liga o braço (e); custo lambda de responder errado (abster vale 0)
     abster_amostras: int = 8    # H5: ações sorteadas por exemplo (grupo do GRPO)
     abster_alpha: float = 1.0   # H5: peso do termo de RL
@@ -677,6 +743,9 @@ def train(cfg: TrainConfig, out: Path, resume: bool = True, *, model=None, tok=N
         raise ValueError("H13 (--variar-prompt) só com --readout letras: a pointer head assume o prompt de sempre")
     if cfg.readout not in ("letras", "ponteiro", "residual"):
         raise ValueError(f"readout desconhecido: {cfg.readout}")
+    rlcd = cfg.loss.startswith("rlcd")
+    if rlcd and cfg.readout != "letras":
+        raise ValueError("H15 (--loss rlcd*) só com --readout letras")
     if cfg.init_adapter:  # F2.3a: continua um LoRA já treinado (o otimizador e o cronograma recomeçam)
         from peft import set_peft_model_state_dict
         from safetensors.torch import load_file
@@ -697,6 +766,27 @@ def train(cfg: TrainConfig, out: Path, resume: bool = True, *, model=None, tok=N
             raise RuntimeError(f"nenhum módulo LoRA casa com frozen_targets={cfg.frozen_targets}")
         if not cfg.init_adapter and max(frozen.values()) != 0.0:
             raise RuntimeError("LoRA congelado com B != 0: o módulo não ficaria igual ao base")
+    # H15: a referência do KL é o modelo no COMEÇO deste treino (com --init-adapter, o adaptador inicial; sem ele,
+    # B = 0, ou seja, o modelo base). Guardado antes de qualquer retomada, para não virar o checkpoint.
+    ref_lora = ({n: prm.detach().clone() for n, prm in model.named_parameters() if "lora_" in n}
+                if rlcd and cfg.rlcd_beta else None)
+
+    def ref_scores(b):
+        """Notas das letras com os pesos LoRA do começo (troca, lê e devolve os pesos atuais, sem gradiente)."""
+        prms = dict(model.named_parameters())
+        was = model.training
+        with torch.no_grad():
+            atual = {n: prms[n].detach().clone() for n in ref_lora}
+            for n, v in ref_lora.items():
+                prms[n].copy_(v)
+            model.eval()
+            try:
+                return option_scores(model, b, pad_id, head32)
+            finally:
+                for n, v in atual.items():
+                    prms[n].copy_(v)
+                model.train(was)
+
     pointer = None
     if cfg.readout in ("ponteiro", "residual"):  # cabeça nova com gerador próprio; o LoRA nasce igual ao do E3
         from .ponteiro import new_head
@@ -715,7 +805,8 @@ def train(cfg: TrainConfig, out: Path, resume: bool = True, *, model=None, tok=N
 
     enc = Encoder(lambda t: tok(t, add_special_tokens=False)["input_ids"],
                   template or load_template(ARTIFACTS_DIR / "lumi" / "chat_template.jinja"),
-                  offsets=_offsets if pointer is not None else None)
+                  offsets=_offsets if pointer is not None else None,
+                  escalas=load_escalas() if rlcd else None)
 
     # Planos de TODAS as épocas antes de começar: o nº real de atualizações define o agendador.
     epochs = []
@@ -772,6 +863,8 @@ def train(cfg: TrainConfig, out: Path, resume: bool = True, *, model=None, tok=N
             "congelados_max_abs_B": max(frozen.values()) if frozen else None,
             "passos_total": total, "micro_lotes_por_epoca": [len(p) for _, p, _ in epochs],
             "maior_prompt": max(len(e.ids) for e in epochs[0][0])}
+    if rlcd:  # H15: quantos exemplos têm crédito parcial (escala) de fato
+        meta["rlcd_exemplos_com_escala"] = sum(any(0 < x < 1 for x in (e.credito or [])) for e in epochs[0][0])
     if pointer is not None and pointer.residual and state["passo"] == 0:
         # F2.3a: com W_k = 0 a leitura residual tem de ser EXATAMENTE a das letras do adaptador inicial
         exs0, plan0, _ = epochs[0]
@@ -805,7 +898,9 @@ def train(cfg: TrainConfig, out: Path, resume: bool = True, *, model=None, tok=N
                 else:
                     loss_sum, hits, mass = batch_loss(model, b, pad_id, head32, pointer, loss=cfg.loss,
                                                       bandit_clip=cfg.bandit_clip, bandit_amostras=cfg.bandit_amostras,
-                                                      bandit_explorar=cfg.bandit_explorar, suavizar=cfg.suavizar)
+                                                      bandit_explorar=cfg.bandit_explorar, suavizar=cfg.suavizar,
+                                                      rlcd_lambda=cfg.rlcd_lambda, rlcd_beta=cfg.rlcd_beta,
+                                                      ref_scores=ref_scores if ref_lora is not None else None)
                 (loss_sum / n_ex).backward()  # média sobre o lote EFETIVO desta atualização
                 loss_t, hits_t, mass_t = loss_t + float(loss_sum.detach()), hits_t + hits, mass_t + mass * len(b)
                 toks += sum(len(e.ids) for e in b)
