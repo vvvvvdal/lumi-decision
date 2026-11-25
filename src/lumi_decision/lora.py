@@ -94,7 +94,8 @@ def load_duvida(pastas) -> dict[str, float]:
 
 def build_adapt_set(familias, k: int, seed: int = 0, loader=None, duvida: dict | None = None,
                     faixa: int = 3) -> list[Case]:
-    """H9: k GRUPOS rotulados de cada família RESERVADA (`fonte:família`), para continuar um LoRA nela.
+    """H9: k GRUPOS rotulados de cada família RESERVADA (`fonte:família`, ou `fonte:família=k` para um k só
+    dela, H14), para continuar um LoRA nela.
 
     Pool: os casos da família fora do `dev`/`test` (Felhen: o `train` das reservadas, nunca usado). Se não houver
     nenhum (Telepatia: as reservadas só existem no `dev`), usa o `dev`; aí esses grupos precisam sair da
@@ -105,7 +106,12 @@ def build_adapt_set(familias, k: int, seed: int = 0, loader=None, duvida: dict |
     ambíguos ou com rótulo ruim)."""
     loader = loader or (lambda src: load_cases(src, load_config()))
     cache, out = {}, []
+    k_padrao = k
     for item in familias:
+        item, _, k_txt = item.partition("=")  # H14: `fonte:família=k` troca o k só desta família
+        k = int(k_txt) if k_txt else k_padrao
+        if k <= 0:
+            raise ValueError(f"k inválido em {item}={k_txt}")
         src, fam = item.split(":", 1)
         if src not in cache:
             cache[src] = loader(src)

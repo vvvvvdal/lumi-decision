@@ -1,0 +1,6 @@
+# Perguntas em ESCALA: opções com ordem natural (H15, crédito parcial para a opção vizinha).
+# Uma escala vale para todo caso cujo conjunto de ids de opção seja exatamente o de `ordem`.
+# A ordem é decidida à mão, a partir de `analises/escalas_inventario.md` (scripts/escalas.py).
+# Exemplo:
+# [[escala]]
+# ordem = ["falso", "impreciso", "verdadeiro"]

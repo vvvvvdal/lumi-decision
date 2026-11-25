@@ -104,3 +104,17 @@ def test_training_set_for_duvida_exige_preds():
     cfg = lora.TrainConfig(adapt_familias=["s:nova"], adapt_k=6, adapt_selecao="duvida")
     with pytest.raises(ValueError):
         lora.training_set_for(cfg)
+
+
+def test_k_por_familia():
+    """H14: `fonte:família=k` troca o k só daquela família; as outras ficam com o k padrão."""
+    out = lora.build_adapt_set(["s:comtrain=8", "s:sodev"], 5, loader=loader)
+    assert len({x.group_id for x in out if x.family == "comtrain"}) == 8
+    assert len({x.group_id for x in out if x.family == "sodev"}) == 5
+    # os 5 primeiros do sorteio continuam dentro dos 8 (mesmo hash): subir o k só acrescenta grupos
+    k5 = {x.group_id for x in lora.build_adapt_set(["s:comtrain"], 5, loader=loader)}
+    assert k5 <= {x.group_id for x in out if x.family == "comtrain"}
+    with pytest.raises(ValueError):
+        lora.build_adapt_set(["s:comtrain=999"], 5, loader=loader)
+    with pytest.raises(ValueError):
+        lora.build_adapt_set(["s:comtrain=0"], 5, loader=loader)
