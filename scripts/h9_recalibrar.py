@@ -75,6 +75,7 @@ def main(argv=None):
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--excluir-tambem", default="", help="prefixos de runs cujos grupos de treino também saem")
     p.add_argument("--out", default="")
+    p.add_argument("--split", default="dev", help="pasta avaliada (H13b: devvar = prompt nunca visto); o calib continua o de sempre")
     a = p.parse_args(argv)
     runs, ks = Path(a.runs), [int(k) for k in a.ks.split(",")]
     linhas = ["| fonte | braço | acc res. | método | k | ECE | NLL | cobertura | risco aceitos |",
@@ -96,7 +97,7 @@ def main(argv=None):
                 fora |= grupos_de_treino(runs, nome(outro, s))
             dados = {}
             for braco, nm in (("base", nb), ("novo", nn)):
-                pc, pd = runs / f"{nm}_{fonte}_calib", runs / f"{nm}_{fonte}_dev"
+                pc, pd = runs / f"{nm}_{fonte}_calib", runs / f"{nm}_{fonte}_{a.split}"
                 if not ((pc / "predicoes.jsonl").exists() and (pd / "predicoes.jsonl").exists()):
                     print(f">> {fonte} semente {s}: faltam {pc} ou {pd}; pulei")
                     break

@@ -56,6 +56,7 @@ def main(argv=None):
     p.add_argument("--excluir-tambem", default="",
                    help="runs cujos grupos de treino também saem da avaliação (comparar braços com grupos diferentes)")
     p.add_argument("--out", default="")
+    p.add_argument("--split", default="dev", help="pasta avaliada (H13b: devvar = prompt nunca visto); o calib continua o de sempre")
     a = p.parse_args(argv)
     runs = Path(a.runs)
     t1 = ["| novo | fonte | recorte | n grupos | métrica | base | novo | Δ | IC 95% | leitura |",
@@ -70,7 +71,7 @@ def main(argv=None):
         for outro in filter(None, a.excluir_tambem.split(",")):
             fora |= grupos_de_treino(runs, outro)
         for fonte in a.fontes.split(","):
-            pb, pn = runs / f"{a.base}_{fonte}_dev", runs / f"{novo}_{fonte}_dev"
+            pb, pn = runs / f"{a.base}_{fonte}_{a.split}", runs / f"{novo}_{fonte}_{a.split}"
             if not ((pb / "predicoes.jsonl").exists() and (pn / "predicoes.jsonl").exists()):
                 print(f">> falta {pb} ou {pn}; pulei")
                 continue

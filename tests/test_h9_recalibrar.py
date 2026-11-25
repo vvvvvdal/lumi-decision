@@ -56,3 +56,17 @@ def test_recalibrar_h9_remove_treino_e_desfaz_superconfianca(tmp_path):
     ece_T = np.mean([m["ece"] for m in novo["T_fam|25"]])
     assert ece_cru > 0.10 and ece_T < ece_cru - 0.04               # a recalibração desfaz a superconfiança
     assert "Famílias VISTAS" in out.read_text(encoding="utf-8")
+
+
+def test_split_le_outra_pasta_e_mantem_o_calib(tmp_path):
+    """H13b: --split devvar mede as pastas _devvar com o mesmo calib; com a mesma cópia, o resultado é igual."""
+    import shutil
+    _runs(tmp_path, [f"nova-dev-{g}" for g in range(20)])
+    for nm in ("h4_log", "h9_k100"):
+        shutil.copytree(tmp_path / f"{nm}_felhen_dev", tmp_path / f"{nm}_felhen_devvar")
+    args = ["--runs", str(tmp_path), "--fontes", "felhen", "--sementes", "0", "--ks", "25", "--repeticoes", "5"]
+    h9b.main(args + ["--out", str(tmp_path / "a.md")])
+    h9b.main(args + ["--split", "devvar", "--out", str(tmp_path / "b.md")])
+    assert (tmp_path / "a.md").read_text(encoding="utf-8") == (tmp_path / "b.md").read_text(encoding="utf-8")
+    shutil.rmtree(tmp_path / "h9_k100_felhen_devvar")
+    h9b.main(args + ["--split", "devvar", "--out", str(tmp_path / "c.md")])  # falta a pasta: pula sem quebrar

@@ -16,11 +16,12 @@ def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     p.add_argument("--runs", default="runs")
     p.add_argument("--fontes", default="felhen,telepatia")
+    p.add_argument("--nomes", default=",".join(RUNS), help="runs (sem fonte e split), separados por vírgula")
     p.add_argument("--out", default="")
     a = p.parse_args(argv)
     linhas = ["| run | fonte | prompt | n | massa das letras (média) | casos com massa < 0,5 | gera a mesma letra |",
               "|---|---|---|---:|---:|---:|---:|"]
-    for nome in RUNS:
+    for nome in a.nomes.split(","):
         for fonte in a.fontes.split(","):
             for split, rot in (("dev", "de sempre"), ("devvar", "novo (variante 4)")):
                 f = Path(a.runs) / f"{nome}_{fonte}_{split}" / "predicoes.jsonl"
