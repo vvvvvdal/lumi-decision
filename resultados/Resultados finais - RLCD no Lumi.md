@@ -289,6 +289,16 @@ O Lumi fica mais robusto a um prompt que nunca viu, mas na matéria nova ganha n
 - Ver se o RL de abstenção (H5) faz diferença quando o modelo já sabe a matéria, ou seja, depois da H9.
 - Testar a receita com o prompt variado (H9r a partir do `h4_aug`, também variando o prompt), no prompt de sempre e no nunca visto.
 - Conferir de onde veio o 37% publicado para o Felhen na receita final (hoje a mesma conta dá 35%).
+- **GEPA + destilação de contexto (matéria nova com poucos rótulos), ideia guardada em 25/11:**
+  - otimizar só a descrição da tarefa da família nova com 25 rótulos (GEPA, arXiv 2507.19457), com um modelo de
+    reflexão aberto no cluster. O Clef não serve, porque não gera texto;
+  - depois, destilar no Lumi: o Lumi com a descrição boa responde casos sem rótulo, e o Lumi com o prompt simples
+    aprende a dar as mesmas probabilidades;
+  - comparar com o treino curto de 100 rótulos (H9);
+  - cuidados:
+    - o paper não testou classificação com modelo pequeno;
+    - a H8 mostrou que pôr informação no prompt calibrou, mas não ensinou;
+    - o GEPA não resolve o usuário escrever do jeito dele. Isso é a H13.
 - **Rodar o teste limpo da `regra_beneficio`** (`scripts/analise_falta_info_fatores.py`) tratando "confiança
   abaixo do limite" como "não sei". Isso mostra se esse "não sei" pega os casos em que falta informação ou só os
   que o modelo não aprendeu. O script precisa de uma opção nova para isso.
