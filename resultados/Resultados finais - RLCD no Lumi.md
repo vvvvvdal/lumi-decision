@@ -1,4 +1,4 @@
-# RLCD no Lumi: resumo final dos experimentos (H4 a H9a, H12, H12b, "sabe que não sabe" e pilotos H11 e H11b)
+# RLCD no Lumi: resumo final dos experimentos (H4 a H9a, H12 a H13, "sabe que não sabe" e pilotos H11 e H11b)
 
 ## A pergunta
 
@@ -113,12 +113,14 @@ quase nunca quando está tudo certo. É um sinal de "caso complicado", não de "
 | H12 | A perda do Clef (entropia cruzada com label smoothing + Brier) é melhor que a log? | Não. Acerta um pouco mais na Telepatia, mas a confiança fica menos honesta no Felhen, mesmo depois da temperatura | Telepatia reservadas: acc +1,8 ponto; Felhen reservadas depois da temperatura: ECE 0,101 contra 0,062 (3 sementes) |
 | H12b | Na perda do Clef, o que faz o quê? | O smoothing traz o custo na calibração. O Brier traz o ganho de acurácia | `logbrier`: Telepatia reservadas +2,2 pontos, com T = 1,05 (a do Clef é 0,83) |
 | Sabe que não sabe | O "não sei" da receita pega os casos que ele erraria? | Sim, dentro da mesma família | Telepatia: erra 10% quando responde, 47% nos "não sei"; AUROC 0,83 (antes 0,59) |
+| H12c | A `log_brier` dentro da receita final? | Empate: o ganho de antes do treino curto some | Telepatia: responde 72% com 10% de erro nos dois braços |
+| H13 | Variar o texto do prompt no treino? | Fica mais robusto a prompts nunca vistos. Na matéria nova, ajuda na Telepatia e piora no Felhen | Prompt nunca visto: vistas +2 pontos; matéria nova no prompt de sempre: Telepatia +3,9, Felhen −1,8 |
 
 ## Receita final
 
 1. **Recompensa honesta:** usar a perda log, uma regra de pontuação própria (H4). A perda do Clef não ganhou
-   dela (H12). A versão sem smoothing (`log_brier`) acerta mais na Telepatia sem estragar a calibração (H12b),
-   mas ainda não foi testada dentro da receita.
+   dela (H12). A versão sem smoothing (`log_brier`) acerta mais na Telepatia antes do treino curto (H12b), mas
+   empata dentro da receita (H12c).
 2. **Treino curto na matéria nova:** cerca de 100 exemplos **sorteados** da família nova, mais o mesmo número
    de casos já vistos (replay), por 3 épocas a partir do adaptador da H4 (H9 + H9r).
 3. **Recalibrar:**
@@ -251,22 +253,25 @@ label smoothing somada ao Brier. Testamos isso com 3 sementes na H12 (`Resultado
 
 A H12b separou as duas peças (`Resultados H12b - smoothing ou Brier.md`): o custo vem do smoothing, e o ganho
 da Telepatia vem do Brier. A entropia cruzada + Brier sem smoothing (`log_brier`) acerta +2,2 pontos nas
-reservadas da Telepatia sem o custo do smoothing.
+reservadas da Telepatia sem o custo do smoothing. Dentro da receita final, esse ganho some (H12c).
+
+Na parte de dados, a H13 treinou com o texto do prompt variado (`Resultados H13 - variar o prompt no treino.md`).
+O Lumi fica mais robusto a um prompt que nunca viu, mas na matéria nova ganha na Telepatia e perde no Felhen.
 
 | No Clef | No nosso projeto |
 |---|---|
 | Lê a escolha direto das opções, sem gerar texto | Sim: a leitura das letras |
 | Modelo base congelado + LoRA (posto 256) | Sim, com posto 16 |
 | Cabeça de roteamento treinada junto | Testada pelo Palhares (ponteiro, H3), e foi pior |
-| Entropia cruzada com label smoothing + Brier | Testada na H12: não ganhou da perda log. Sem o smoothing (H12b), ganha na acurácia da Telepatia e falta testar na receita |
+| Entropia cruzada com label smoothing + Brier | Testada na H12: não ganhou da perda log. Sem o smoothing, ganha antes do treino curto (H12b), mas empata na receita (H12c) |
 | RLCD como objetivo secundário: crédito parcial para opções vizinhas numa escala, prêmio por saída precisa e penalidade de referência | Em parte: RL sem gabarito (H6) e "não sei" com coleira KL (H5). O crédito parcial só vale para opções em escala, e as nossas não são |
-| Dados sintéticos permutando ordem de campos, prompts e esquemas | Em parte: a ordem das opções é sorteada a cada época. Prompts e formatos, não |
+| Dados sintéticos permutando ordem de campos, prompts e esquemas | Testado na H13: prompts, formato das opções e ordem dos campos variados. Fica mais robusto; na matéria nova, depende da fonte |
 
 ## Limites
 
 - **Só `dev`.** O `test` oficial não foi tocado.
 - **Sementes:**
-  - têm 3 sementes: H4 (log e Brier), H12 e H12b (perdas do Clef), H6 (`bandit_log` com G = 32, job 37691), H9 com k = 100 e H9r;
+  - têm 3 sementes: H4 (log e Brier), H12, H12b e H12c (perdas do Clef), H13, H6 (`bandit_log` com G = 32, job 37691), H9 com k = 100 e H9r;
   - H5: a comparação com a regra simples (abster pela confiança) usa só a semente 0. O λ = 3 foi repetido com
     3 sementes para ver em que casos ele abstém;
   - os outros braços da H6, H8, H9m e H9a têm só a semente 0.
@@ -282,7 +287,7 @@ reservadas da Telepatia sem o custo do smoothing.
 - Confirmar a receita final no `test` oficial.
 - Testar com mais famílias reservadas e ver se o ganho se repete.
 - Ver se o RL de abstenção (H5) faz diferença quando o modelo já sabe a matéria, ou seja, depois da H9.
-- Testar a perda `log_brier` dentro da receita final (H9r a partir do `h4_logbrier` + recalibração).
+- Testar a receita com o prompt variado (H9r a partir do `h4_aug`, também variando o prompt), no prompt de sempre e no nunca visto.
 - Conferir de onde veio o 37% publicado para o Felhen na receita final (hoje a mesma conta dá 35%).
 - **Rodar o teste limpo da `regra_beneficio`** (`scripts/analise_falta_info_fatores.py`) tratando "confiança
   abaixo do limite" como "não sei". Isso mostra se esse "não sei" pega os casos em que falta informação ou só os
