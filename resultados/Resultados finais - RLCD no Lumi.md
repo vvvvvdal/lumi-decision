@@ -115,6 +115,7 @@ quase nunca quando está tudo certo. É um sinal de "caso complicado", não de "
 | Sabe que não sabe | O "não sei" da receita pega os casos que ele erraria? | Sim, dentro da mesma família | Telepatia: erra 10% quando responde, 47% nos "não sei"; AUROC 0,83 (antes 0,59) |
 | H12c | A `log_brier` dentro da receita final? | Empate: o ganho de antes do treino curto some | Telepatia: responde 72% com 10% de erro nos dois braços |
 | H13 | Variar o texto do prompt no treino? | Fica mais robusto a prompts nunca vistos. Na matéria nova, ajuda na Telepatia e piora no Felhen | Prompt nunca visto: vistas +2 pontos; matéria nova no prompt de sempre: Telepatia +3,9, Felhen −1,8 |
+| H13b | A receita com o prompt variado? | Não entra: ganha no prompt nunca visto e perde no de sempre. E a receita de hoje é frágil a um prompt novo | Telepatia responde: 72% → 66% no prompt de sempre; no nunca visto, 50% (hoje) contra 57% |
 
 ## Receita final
 
@@ -270,8 +271,10 @@ O Lumi fica mais robusto a um prompt que nunca viu, mas na matéria nova ganha n
 ## Limites
 
 - **Só `dev`.** O `test` oficial não foi tocado.
+- **Um prompt só.** Os números da receita valem para o prompt de sempre. Com um texto nunca visto, a Telepatia
+  responde 50% em vez de 72% (H13b).
 - **Sementes:**
-  - têm 3 sementes: H4 (log e Brier), H12, H12b e H12c (perdas do Clef), H13, H6 (`bandit_log` com G = 32, job 37691), H9 com k = 100 e H9r;
+  - têm 3 sementes: H4 (log e Brier), H12, H12b e H12c (perdas do Clef), H13, H13b, H6 (`bandit_log` com G = 32, job 37691), H9 com k = 100 e H9r;
   - H5: a comparação com a regra simples (abster pela confiança) usa só a semente 0. O λ = 3 foi repetido com
     3 sementes para ver em que casos ele abstém;
   - os outros braços da H6, H8, H9m e H9a têm só a semente 0.
@@ -287,7 +290,7 @@ O Lumi fica mais robusto a um prompt que nunca viu, mas na matéria nova ganha n
 - Confirmar a receita final no `test` oficial.
 - Testar com mais famílias reservadas e ver se o ganho se repete.
 - Ver se o RL de abstenção (H5) faz diferença quando o modelo já sabe a matéria, ou seja, depois da H9.
-- Testar a receita com o prompt variado (H9r a partir do `h4_aug`, também variando o prompt), no prompt de sempre e no nunca visto.
+- Robustez ao texto do prompt: a receita responde 72% no prompt de sempre e só 50% num nunca visto (H13b). Treinar só com variantes não resolve sem custo; testar misturar mais o prompt de sempre, ou usar muito mais variantes.
 - Conferir de onde veio o 37% publicado para o Felhen na receita final (hoje a mesma conta dá 35%).
 - **GEPA + destilação de contexto (matéria nova com poucos rótulos), ideia guardada em 25/11:**
   - otimizar só a descrição da tarefa da família nova com 25 rótulos (GEPA, arXiv 2507.19457), com um modelo de
