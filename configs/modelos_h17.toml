@@ -1,0 +1,40 @@
+# H17: modelos comparados nas decisões de agente. Revisões fixadas em 27/11/2026 (API do Hugging Face).
+# nativo = true usa a implementação do transformers (--native); false usa trust_remote_code (o Lumi).
+# template: o chat template usado na leitura das letras (os de fora são exportados por scripts/exportar_template.py).
+
+[lumi]
+id = "ceia-br/lumi-4b"
+revisao = "27b30f40b930fd05cee5e1c1f8790f70fa5b816d"
+nativo = false
+template = "artifacts/lumi/chat_template.jinja"
+
+[lumi_h4]
+id = "ceia-br/lumi-4b"
+revisao = "27b30f40b930fd05cee5e1c1f8790f70fa5b816d"
+nativo = false
+template = "artifacts/lumi/chat_template.jinja"
+adaptador = "runs/h4_log/adapter"
+
+[qwen3_4b]  # Apache-2.0, sem thinking
+id = "Qwen/Qwen3-4B-Instruct-2507"
+revisao = "cdbee75f17c01a7cc42f958dc650907174af0554"
+nativo = true
+template = "artifacts/h17/qwen3_4b/chat_template.jinja"
+
+[gemma4_e4b]  # Apache-2.0; a arquitetura é multimodal (Gemma4ForConditionalGeneration): a sanidade confere se carrega
+id = "google/gemma-4-E4B-it"
+revisao = "4ecc2ba63bcac23ba4a767fc87025b1450f84c9c"
+nativo = true
+template = "artifacts/h17/gemma4_e4b/chat_template.jinja"
+
+[lfm2_tool]  # LFM Open License; feito para tool calling, fala PT
+id = "LiquidAI/LFM2-1.2B-Tool"
+revisao = "6d24c6b7471fcbcec084935e377a5302f4b84389"
+nativo = true
+template = "artifacts/h17/lfm2_tool/chat_template.jinja"
+
+[lfm3]  # LFM Open License; fala PT; thinking ligado por padrão (o prompt passa enable_thinking=False)
+id = "LiquidAI/LFM3-1.7B"
+revisao = "1da06bec6a819da10b54c67e5c90972b46d81871"
+nativo = true
+template = "artifacts/h17/lfm3/chat_template.jinja"

@@ -68,3 +68,25 @@ do Felhen e da Telepatia; o idioma é o suspeito.
 Critério (`comparar_h4.py --base log --novos pt --sementes 0,1`): ajuda se a acurácia das reservadas subir com o
 IC fora do zero sem perder mais de 1 ponto nas vistas. Se ajudar, rodar a receita a partir dele, e depois pensar
 em gerar famílias sintéticas novas em português no `res2.py`.
+
+---
+
+## H17: o Lumi no harness
+
+Na reunião de 27/11 o foco virou "o LLM no harness": medir as decisões que o modelo toma dentro de um agente
+(qual ferramenta chamar, qual modelo executa, resolver ele mesmo ou passar adiante) e comparar o Lumi com modelos
+do mesmo porte. Comparo o Lumi congelado e o Lumi + `h4_log` com `Qwen/Qwen3-4B-Instruct-2507`,
+`google/gemma-4-E4B-it`, `LiquidAI/LFM2-1.2B-Tool` e `LiquidAI/LFM3-1.7B` (revisões em
+`configs/modelos_h17.toml`), todos pela mesma leitura das letras, com o template de cada um e nas 2 ordens.
+
+As tarefas: escolher a função no BFCL (`multiple`, `live_multiple` e as duas de irrelevância, em que o certo é
+"nenhuma"; 2.368 casos), escolher a ferramenta em PT no `traces`, e o ENEM (metade `explorar`) para a curva de
+"responder ou passar adiante". O roteamento entre modelos (LLMRouterBench) entra depois que eu conferir o formato
+dos dados.
+
+Critério: a métrica principal é a acurácia na escolha da função e na ferramenta, com IC pareado contra o Lumi
+congelado. Considero o Lumi competitivo se ficar a no máximo 3 pontos do melhor modelo de porte parecido. Um
+modelo com massa nas letras abaixo de 0,9 ou viés de ordem alto não é comparado pelas letras (vai para o modo
+nativo depois). Como o BFCL é público, comparo o `live_multiple` (mais novo) com o `multiple` para ver sinal de
+contaminação. Se o Lumi perder, o próximo passo é treinar ele nesse tipo de decisão. Conferências: o Lumi
+congelado tem que repetir os 86,5% das vistas do `traces` (E1) e os 67,2% do ENEM (F0).

@@ -50,6 +50,14 @@ SOURCES = {
         "revision": "cebb4a26687cb14742fd07c0ebe17387ee51d369",
         "files": ["data/core/train.jsonl"],
     },
+    # H17 (Apache-2.0): escolha de função; só avaliação. Ver `harness.bfcl_cases`.
+    "bfcl": {
+        "repo": "gorilla-llm/Berkeley-Function-Calling-Leaderboard", "repo_type": "dataset",
+        "revision": "61fc0608cfd831fcfbbaa676ebdfef0ed963eeda",
+        "files": ["BFCL_v3_multiple.json", "BFCL_v3_live_multiple.json", "BFCL_v3_irrelevance.json",
+                  "BFCL_v3_live_irrelevance.json", "possible_answer/BFCL_v3_multiple.json",
+                  "possible_answer/BFCL_v3_live_multiple.json"],
+    },
     "lumi": {
         "repo": "ceia-br/lumi-4b", "repo_type": "model",
         "revision": "27b30f40b930fd05cee5e1c1f8790f70fa5b816d",
@@ -485,6 +493,11 @@ def _res2_cases(cfg: dict) -> list[Case]:
     return res2_cases(cfg)
 
 
+def _bfcl_cases(cfg: dict) -> list[Case]:
+    from .harness import bfcl_cases
+    return bfcl_cases(cfg)
+
+
 LOADERS = {"felhen": felhen_cases, "telepatia": telepatia_cases, "traces": traces_cases}
 # F3 (piloto de diversidade): fora de LOADERS para não mudar as auditorias e os dados dos treinos já feitos.
 # Reservadas v2 (analises/reservadas_v2.md): só avaliação, todas as famílias reservadas.
@@ -492,7 +505,8 @@ NEW_SOURCES = {"f3": _f3_cases, "res2": _res2_cases}
 # Fontes só de treino (não entram em `lumi-dados resumo` nem na avaliação).
 TRAIN_ONLY = {"eikos": eikos_cases, "eikos_pt": lambda cfg: eikos_cases(cfg, langs={"Brazilian Portuguese"})}
 # Fontes só de avaliação, fora do fine-tuning (provas). Não entram em LOADERS (nem nas auditorias de treino).
-EVAL_ONLY = {"vestbench_enem": lambda cfg: vestbench_cases(cfg, "enem")}
+EVAL_ONLY = {"vestbench_enem": lambda cfg: vestbench_cases(cfg, "enem"),
+             "bfcl": _bfcl_cases}  # H17: escolher a função (src/lumi_decision/harness.py)
 
 
 def load_cases(source: str, cfg: dict | None = None) -> list[Case]:
