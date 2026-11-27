@@ -1,6 +1,17 @@
 # Perguntas em ESCALA: opções com ordem natural (H15, crédito parcial para a opção vizinha).
 # Uma escala vale para todo caso cujo conjunto de ids de opção seja exatamente o de `ordem`.
-# A ordem é decidida à mão, a partir de `analises/escalas_inventario.md` (scripts/escalas.py).
-# Exemplo:
-# [[escala]]
-# ordem = ["falso", "impreciso", "verdadeiro"]
+# Decididas à mão em 26/11/2026 a partir de `analises/escalas_inventario.md` (scripts/escalas.py).
+# Ficaram de fora os conjuntos sem ordem clara (ex.: approve/hold/manual_review/reject,
+# failure/harmful/partial/success, close_benign/monitor/investigate/contain).
+
+# Felhen factck_veracidade (reservada): Falso < Impreciso < Verdadeiro.
+[[escala]]
+ordem = ["falso", "impreciso", "verdadeiro"]
+
+# Telepatia: risco, frustração, divergência da fatura e urgência, de 0 (nada) a 3 (crítico).
+[[escala]]
+ordem = ["0", "1", "2", "3"]
+
+# Telepatia security_incidents: gravidade de 0 (negligível) a 4 (crítica).
+[[escala]]
+ordem = ["0", "1", "2", "3", "4"]

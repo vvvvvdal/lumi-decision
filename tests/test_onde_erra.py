@@ -19,7 +19,7 @@ def test_vizinho_e_grave():
     rows = [_r("f", "f"), _r("f", "i"), _r("f", "v"), _r("v", "f"), _r("i", "v")]
     txt = "\n".join(oe.resumo_familia(rows, ESC))
     assert "4 erros em perguntas com escala; vizinhos 2 (50.0%), graves 2 (50.0%)" in txt
-    assert "acurácia 0.200" in txt
+    assert "acurácia 0.200" in txt and "acerto médio por classe 0.111" in txt
 
 
 def test_escala_pelo_conjunto_de_ids():

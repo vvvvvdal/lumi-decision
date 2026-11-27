@@ -93,7 +93,7 @@ def load_duvida(pastas) -> dict[str, float]:
 
 
 def build_adapt_set(familias, k: int, seed: int = 0, loader=None, duvida: dict | None = None,
-                    faixa: int = 3) -> list[Case]:
+                    faixa: int = 3, balancear=()) -> list[Case]:
     """H9: k GRUPOS rotulados de cada família RESERVADA (`fonte:família`, ou `fonte:família=k` para um k só
     dela, H14), para continuar um LoRA nela.
 
@@ -128,6 +128,17 @@ def build_adapt_set(familias, k: int, seed: int = 0, loader=None, duvida: dict |
             if len(com) < faixa * k:
                 raise ValueError(f"{item}: só {len(com)} grupos com predição para a faixa de {faixa}×{k}")
             grupos = sorted(com[: faixa * k], key=h)
+        if item in balancear:
+            # H14: rodízio entre as classes (gabarito do grupo), na ordem do hash dentro de cada classe. Classe
+            # rara acaba primeiro; daí em diante o rodízio segue com as que sobram.
+            gab = {}
+            for c in pool:
+                gab.setdefault(c.group_id, c.gold)
+            por_classe = {}
+            for g in grupos:
+                por_classe.setdefault(gab[g], []).append(g)
+            filas = [por_classe[cl] for cl in sorted(por_classe)]
+            grupos = [f[i] for i in range(max(map(len, filas))) for f in filas if i < len(f)]
         if len(grupos) < k:
             raise ValueError(f"{item}: só {len(grupos)} grupos para k = {k}")
         esc = set(grupos[:k])
@@ -167,7 +178,8 @@ def training_set_for(cfg: "TrainConfig") -> list[Case]:
         if cfg.adapt_selecao == "duvida" and not cfg.adapt_preds:
             raise ValueError("adapt_selecao=duvida precisa de --adapt-preds")
         duv = load_duvida(cfg.adapt_preds) if cfg.adapt_selecao == "duvida" else None
-        adapt = build_adapt_set(cfg.adapt_familias, cfg.adapt_k, seed, duvida=duv, faixa=cfg.adapt_faixa)
+        adapt = build_adapt_set(cfg.adapt_familias, cfg.adapt_k, seed, duvida=duv, faixa=cfg.adapt_faixa,
+                                balancear=set(cfg.adapt_balancear))
         if cfg.adapt_replay > 0:  # H9r: + casos das famílias vistas (treino original), contra o esquecimento
             vistos = build_training_set(cfg.sources, cfg.cap_per_family, seed, parse_source_caps(cfg.source_caps))
             adapt = adapt + replay_set(vistos, round(cfg.adapt_replay * len(adapt)), seed)
@@ -638,6 +650,7 @@ class TrainConfig:
     adapt_selecao: str = "sorteio"  # H9a: sorteio | duvida (faixa de menor confiança do modelo de partida)
     adapt_preds: list = field(default_factory=list)  # H9a: pastas com predicoes.jsonl do modelo de partida no pool
     adapt_faixa: int = 3        # H9a: a faixa de dúvida tem adapt_faixa × k grupos
+    adapt_balancear: list = field(default_factory=list)  # H14: famílias (fonte:família) sorteadas por classe
 
 
 class _Stop:

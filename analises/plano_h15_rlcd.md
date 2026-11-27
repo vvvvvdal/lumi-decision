@@ -56,7 +56,16 @@ que hoje é a mais fraca do Felhen, a `factck_veracidade` (falso < impreciso < v
 
 ## Como rodar
 
-1. **Preencher `configs/escalas.toml`** com as escalas do inventário (etapa 0).
+1. **Escalas preenchidas em 26/11** (`configs/escalas.toml`, antes de rodar):
+   - `falso < impreciso < verdadeiro` (a `factck`);
+   - `0 < 1 < 2 < 3`: risco, frustração, divergência da fatura e urgência na Telepatia, incluindo a `invoice`
+     reservada;
+   - `0 < … < 4`: a gravidade na `security_incidents`.
+
+   Ficaram de fora os conjuntos sem ordem clara.
+   - **Atenção (etapa 0):** na receita, a `factck` responde "falso" em 95% dos casos. O crédito parcial pode
+     ajudar a sair desse chute, ou não fazer nada, se o modelo não distingue as classes. O critério do erro grave
+     continua valendo, e o acerto médio por classe também entra.
 2. **Teste curto:** a perda cai, sem `nan`, e o `treino_meta.json` mostra `rlcd_exemplos_com_escala` > 0.
 3. **3 sementes de cada versão** (comandos na mensagem do ciclo).
 

@@ -62,7 +62,9 @@ def resumo_familia(rows: list[dict], escalas: list[list[str]]) -> list[str]:
     for r in rows:
         conf[r["gold"]][r["pred"]] += 1
     classes = sorted(set(gold) | set(pred), key=lambda c: -gold[c])
-    t = [f"Linhas: {n} · acurácia {acc:.3f} · classe mais comum {gold.most_common(1)[0][1] / n:.3f}", "",
+    recs = [conf[c][c] / gold[c] for c in gold]
+    t = [f"Linhas: {n} · acurácia {acc:.3f} · classe mais comum {gold.most_common(1)[0][1] / n:.3f} · "
+         f"acerto médio por classe {sum(recs) / len(recs):.3f} (chutar sempre a mesma classe dá {1 / len(recs):.3f})", "",
          "| classe | no gabarito | nas respostas | acerto da classe |", "|---|---:|---:|---:|"]
     for c in classes:
         rec = conf[c][c] / gold[c] if gold[c] else float("nan")

@@ -118,3 +118,18 @@ def test_k_por_familia():
         lora.build_adapt_set(["s:comtrain=999"], 5, loader=loader)
     with pytest.raises(ValueError):
         lora.build_adapt_set(["s:comtrain=0"], 5, loader=loader)
+
+
+def test_balancear_por_classe():
+    """H14: na família balanceada, o sorteio alterna as classes; a classe rara acaba e o resto vem das outras."""
+    casos = [c(i, "desb", "train") for i in range(30)]
+    for i, x in enumerate(casos):
+        x.gold = "b" if i < 6 else "a"  # 6 de 'b' e 24 de 'a'
+    ld = lambda src: casos  # noqa: E731
+    bal = lora.build_adapt_set(["s:desb"], 10, loader=ld, balancear={"s:desb"})
+    assert sorted(x.gold for x in bal).count("b") == 5
+    tudo_b = lora.build_adapt_set(["s:desb"], 20, loader=ld, balancear={"s:desb"})
+    assert sum(x.gold == "b" for x in tudo_b) == 6  # todas as raras, o resto da comum
+    sem = lora.build_adapt_set(["s:desb"], 10, loader=ld)
+    assert {x.id for x in sem} != {x.id for x in bal}  # sem balancear, segue o sorteio de sempre
+    assert lora.build_adapt_set(["s:desb=10"], 5, loader=ld, balancear={"s:desb"}) == bal  # com =k também

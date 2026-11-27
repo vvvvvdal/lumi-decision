@@ -284,6 +284,9 @@ O Lumi fica mais robusto a um prompt que nunca viu, mas na matéria nova ganha n
   honesto com 25 rótulos.
 - **Mesmo `lr` em tudo,** e nenhuma busca de hiperparâmetros.
 - **Felhen ainda é difícil:** acurácia de cerca de 0,65 na matéria nova, mesmo depois do treino curto.
+  - Na `factck_veracidade`, isso é só o chute da classe mais comum: o Lumi responde "falso" em 95% dos casos
+    (`Resultados - onde o Felhen erra.md`).
+  - A `juristcu_area` aprendeu de verdade.
 
 ## Em aberto (próximo ciclo)
 
