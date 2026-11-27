@@ -5,7 +5,7 @@
 #SBATCH --mem=32G
 #SBATCH --time=01:00:00
 #SBATCH --output=logs/%x-%j.out
-# Análise sem GPU da H15 (analises/plano_h15_rlcd.md): h15_rlcd (exata) e h15_rlcda (amostrada) contra o
+# Análise sem GPU da H15 (analises/planos_em_andamento.md, seção H15): h15_rlcd (exata) e h15_rlcda (amostrada) contra o
 # h9r_k100, 3 sementes. Uso: sbatch slurm/analise_h15.sbatch   (depois: cat analises/h15_*.md)
 set -uo pipefail
 cd "${SLURM_SUBMIT_DIR:-.}"; [ -f slurm/config.sh ] || cd "/raid/$USER/lumi-decision"

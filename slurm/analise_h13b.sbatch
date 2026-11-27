@@ -5,7 +5,7 @@
 #SBATCH --mem=32G
 #SBATCH --time=01:00:00
 #SBATCH --output=logs/%x-%j.out
-# Análises sem GPU da H13b (analises/plano_h13b_receita_aug.md): receita com o prompt variado (h9ra_k100) contra a
+# Análises sem GPU da H13b (resultados/Experimentos.md, seção H13b (plano)): receita com o prompt variado (h9ra_k100) contra a
 # receita de hoje (h9r_k100), no prompt de sempre (dev) e no nunca visto (devvar).
 # Uso: sbatch slurm/analise_h13b.sbatch   (depois: cat analises/h13b_*.md)
 set -uo pipefail

@@ -8,7 +8,7 @@
 #SBATCH --output=logs/%x-%j.out
 # H11b: confiança ESCRITA depois do raciocínio. Reaproveita os raciocínios do piloto da H11 (runs/h11p2_*),
 # pergunta ao Lumi (mesmo adaptador) a probabilidade de 0 a 100 de a resposta estar certa e compara com as
-# outras fontes de confiança (scripts/h11b_confianca.py). Critério: analises/plano_h11b_confianca.md.
+# outras fontes de confiança (scripts/h11b_confianca.py). Critério: resultados/Experimentos.md, seção H11 e H11b (plano).
 # Uso:         sbatch slurm/h11b_confianca.sbatch [RUN=runs/h4_log]
 # Teste curto: H11B_LIMITE=4 sbatch slurm/h11b_confianca.sbatch   (pastas runs/h11b_teste_*)
 # Tempo curto (20 min) para o Slurm encaixar o job nos buracos da fila; roda em ~5 min. Se estourar, é só

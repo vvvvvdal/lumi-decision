@@ -7,7 +7,7 @@ Relata, por fonte e recorte (vistas / reservadas):
 - tamanho do raciocínio, fração que bateu no limite sem fechar o `</think>`, fração degenerada (repetição)
   e o tempo mediano;
 - o custo projetado de um GRPO (`--rollouts` raciocínios) com esse tempo.
-E grava alguns raciocínios de exemplo. Critério em `analises/plano_h11_piloto.md`.
+E grava alguns raciocínios de exemplo. Critério em `resultados/Experimentos.md, seção H11 e H11b (plano)`.
 
 Uso (na raiz do repo, sem GPU):
     python scripts/h11_piloto.py --base h4_log --piloto h11p --out analises/h11_piloto.md

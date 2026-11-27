@@ -7,7 +7,7 @@ Reaproveita os raciocínios do piloto da H11 (`runs/<piloto>_<fonte>_dev`), sem 
 - compara quatro fontes de confiança nos mesmos casos: a escrita, as letras depois do raciocínio, a consistência
   dos sorteios e as letras sem raciocínio (a leitura honesta da H4, `runs/<base>_<fonte>_dev`).
 
-Critério em `analises/plano_h11b_confianca.md`.
+Critério em `resultados/Experimentos.md, seção H11 e H11b (plano)`.
 
 Uso (na raiz do repo):
     python scripts/h11b_confianca.py --model ceia-br/lumi-4b --revision <rev> --native --adapter runs/h4_log/adapter
@@ -38,7 +38,7 @@ _spec = importlib.util.spec_from_file_location("h11_piloto", RAIZ / "scripts" / 
 h11 = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(h11)
 
-# Critério registrado (analises/plano_h11b_confianca.md), no guloso.
+# Critério registrado (resultados/Experimentos.md, seção H11 e H11b (plano)), no guloso.
 MIN_VALIDAS, MAX_MODA, MIN_AUROC = 0.90, 0.80, 0.65
 
 

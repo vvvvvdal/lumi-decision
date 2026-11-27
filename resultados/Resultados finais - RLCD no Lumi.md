@@ -32,7 +32,7 @@ eles não são a mesma coisa.
 
 ## Ele sabe o que não sabe?
 
-**Resposta curta: sim, depois de aprender a matéria** (medido caso a caso em `Resultados - sabe que não sabe.md`).
+**Resposta curta: sim, depois de aprender a matéria** (medido caso a caso em `Experimentos.md, seção Sabe que não sabe`).
 
 - **No "não sei" pela confiança (o que a gente usa):** ele manda para uma pessoa os casos mais difíceis.
   - Depois da receita final, nas faturas novas, ele erra 10% dos casos que responde e erraria 47% dos que
@@ -92,7 +92,7 @@ casos cuja resposta certa é "negar", a única diferença é faltar documento ou
 Se ele reconhecesse a falta de informação, a primeira linha seria bem maior que a segunda. **As duas empatam.**
 Ele diz "não sei" quando o caso tem algum problema (regra violada, documento faltando ou valor acima do teto) e
 quase nunca quando está tudo certo. É um sinal de "caso complicado", não de "me falta informação". Detalhes em
-`Resultados H5 - abstenção por RL.md`.
+`Experimentos.md, seção H5`.
 
 ## O caminho, em uma tabela
 
@@ -178,7 +178,7 @@ raciocínio em texto (RLCR, Damani et al., 2025). Isso levou ao **piloto da H11*
 
 ## Piloto H11: raciocinar antes de decidir
 
-Detalhes em `Resultados H11 - piloto do raciocínio.md`.
+Detalhes em `Experimentos.md, seção H11 e H11b`.
 
 - **O Lumi raciocina:** 81% dos raciocínios fecham o `</think>`, 1% degenera, 3,9 s cada.
 - **Depois de raciocinar, ele fica superconfiante:**
@@ -205,7 +205,7 @@ Detalhes em `Resultados H11 - piloto do raciocínio.md`.
 
 **Resposta curta: ele escreve o número, mas quase sempre "100". O número não separa os acertos dos erros o
 bastante, então a confiança escrita terá de ser aprendida.** Detalhes em
-`Resultados H11 - piloto do raciocínio.md`.
+`Experimentos.md, seção H11 e H11b`.
 
 - **Como foi:** nos mesmos 88 casos do piloto H11, depois da letra, um turno novo pergunta "Qual é a
   probabilidade, de 0 a 100, de que a sua resposta esteja correta?".
@@ -246,17 +246,17 @@ bastante, então a confiança escrita terá de ser aprendida.** Detalhes em
 ## Fizemos o que o Clef faz?
 
 **Na parte da perda, sim, e ela não ganhou da nossa.** O Clef (Cloudflare, 2026) treina com entropia cruzada com
-label smoothing somada ao Brier. Testamos isso com 3 sementes na H12 (`Resultados H12 - braço Clef.md`):
+label smoothing somada ao Brier. Testamos isso com 3 sementes na H12 (`Experimentos.md, seção H12`):
 
 - acerta 1 a 2 pontos a mais na Telepatia;
 - deixa a confiança menos honesta, porque o label smoothing ensina a nunca dar 100%;
 - a temperatura conserta isso só em parte: nas reservadas do Felhen, ela até piora (ECE 0,101 contra 0,062).
 
-A H12b separou as duas peças (`Resultados H12b - smoothing ou Brier.md`): o custo vem do smoothing, e o ganho
+A H12b separou as duas peças (`Experimentos.md, seção H12b`): o custo vem do smoothing, e o ganho
 da Telepatia vem do Brier. A entropia cruzada + Brier sem smoothing (`log_brier`) acerta +2,2 pontos nas
 reservadas da Telepatia sem o custo do smoothing. Dentro da receita final, esse ganho some (H12c).
 
-Na parte de dados, a H13 treinou com o texto do prompt variado (`Resultados H13 - variar o prompt no treino.md`).
+Na parte de dados, a H13 treinou com o texto do prompt variado (`Experimentos.md, seção H13`).
 O Lumi fica mais robusto a um prompt que nunca viu, mas na matéria nova ganha na Telepatia e perde no Felhen.
 
 | No Clef | No nosso projeto |
@@ -285,7 +285,7 @@ O Lumi fica mais robusto a um prompt que nunca viu, mas na matéria nova ganha n
 - **Mesmo `lr` em tudo,** e nenhuma busca de hiperparâmetros.
 - **Felhen ainda é difícil:** acurácia de cerca de 0,65 na matéria nova, mesmo depois do treino curto.
   - Na `factck_veracidade`, isso é só o chute da classe mais comum: o Lumi responde "falso" em 95% dos casos
-    (`Resultados - onde o Felhen erra.md`).
+    (`Experimentos.md, seção Onde o Felhen erra`).
   - A `juristcu_area` aprendeu de verdade.
 
 ## Em aberto (próximo ciclo)

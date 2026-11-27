@@ -5,7 +5,7 @@
 #SBATCH --mem=32G
 #SBATCH --time=01:00:00
 #SBATCH --output=logs/%x-%j.out
-# Análises sem GPU da H13 (analises/plano_h13_dados.md) e da H12c (analises/plano_h12c_logbrier_receita.md).
+# Análises sem GPU da H13 (resultados/Experimentos.md, seção H13 (plano)) e da H12c (resultados/Experimentos.md, seção H12c (plano)).
 # Uso: sbatch slurm/analise_h13_h12c.sbatch   (depois: cat analises/h13_*.md analises/h12c_*.md)
 set -uo pipefail
 cd "${SLURM_SUBMIT_DIR:-.}"; [ -f slurm/config.sh ] || cd "/raid/$USER/lumi-decision"

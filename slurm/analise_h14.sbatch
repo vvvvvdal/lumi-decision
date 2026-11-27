@@ -5,7 +5,7 @@
 #SBATCH --mem=32G
 #SBATCH --time=01:00:00
 #SBATCH --output=logs/%x-%j.out
-# Análise sem GPU da triagem H14 (analises/plano_h14_botoes.md), semente 0, contra o h9r_k100.
+# Análise sem GPU da triagem H14 (analises/planos_em_andamento.md, seção H14), semente 0, contra o h9r_k100.
 # Uso: sbatch slurm/analise_h14.sbatch   (depois: cat analises/h14_*.md)
 set -uo pipefail
 cd "${SLURM_SUBMIT_DIR:-.}"; [ -f slurm/config.sh ] || cd "/raid/$USER/lumi-decision"

@@ -6,7 +6,7 @@
 #SBATCH --time=00:30:00
 #SBATCH --output=logs/%x-%j.out
 # "Sabe que não sabe" (scripts/analise_sabe.py): só CPU, com as predições que já existem.
-# Plano e leitura registrados: analises/plano_sabe_que_nao_sabe.md.
+# Plano e leitura registrados: resultados/Experimentos.md, seção Sabe que não sabe (plano).
 # Por sbatch e não srun: o srun interativo caiu esperando na fila ("Connection reset by peer").
 # Uso: sbatch slurm/analise_sabe.sbatch
 set -uo pipefail
