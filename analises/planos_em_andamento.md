@@ -37,7 +37,7 @@ Análise: `slurm/analise_h14.sbatch`.
 ## H15: o RLCD do Clef no Lumi
 
 O Clef descreve o RLCD como um objetivo secundário com crédito parcial para a opção vizinha numa escala, prêmio
-para o registro inteiro certo e uma penalidade de referência, mas não publica fórmula nem pesos. A nossa versão:
+para o registro inteiro certo e uma penalidade de referência, mas não publica fórmula nem pesos. A minha versão:
 
 $$L = -\log p(y) \;-\; \lambda \sum_a p(a)\,R(a,y) \;+\; \beta\,\mathrm{KL}(p \,\|\, p_{\text{ref}})$$
 

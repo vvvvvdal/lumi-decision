@@ -1,8 +1,6 @@
 # Experimentos do RLCD no Lumi
 
-Cada seção tem a pergunta, o que foi feito, o resultado e o critério que registramos antes de rodar. Os planos completos e as versões longas estão no histórico do git (commit 878fdaf).
-
-Seções: H4 · H5 · H6 · H7 · H8 · H9 · H9a · H9b · H9r e H9m · H10 · H11 e H11b · H12 · H12b · H12c · H13 · H13b · Sabe que não sabe · Onde o Felhen erra
+Cada seção tem a pergunta, o que eu fiz, o resultado e o critério que escrevi antes de rodar. Os planos completos e as versões longas estão no histórico do git (commit 878fdaf).
 
 ---
 
@@ -10,7 +8,7 @@ Seções: H4 · H5 · H6 · H7 · H8 · H9 · H9a · H9b · H9r e H9m · H10 · 
 
 Recompensar só o acerto destrói a calibração do Lumi, como a teoria previa. Entre as duas regras próprias (log e Brier) quase não há diferença: o problema é usar uma recompensa que não é própria.
 
-Mantivemos a receita A1 inteira (LoRA r=16, 20.350 exemplos de Felhen + Telepatia + Traces, 1 época, lr 1e-4) e trocamos só a perda: `log` ($-\sum_k q_k \log p_k$), `brier` ($\sum_k (p_k - q_k)^2$) e `acerto` ($-\sum_k q_k\, p_k$). Temperatura e limiar de abstenção foram ajustados no `calib` e aplicados no `dev`. Antes conferimos que o ambiente reproduz o E1 e o A1 originais. `log` e `brier` rodaram com as sementes 0, 1 e 2; `acerto` só com a semente 0 (18 e 19/11).
+Mantive a receita A1 inteira (LoRA r=16, 20.350 exemplos de Felhen + Telepatia + Traces, 1 época, lr 1e-4) e troquei só a perda: `log` ($-\sum_k q_k \log p_k$), `brier` ($\sum_k (p_k - q_k)^2$) e `acerto` ($-\sum_k q_k\, p_k$). Temperatura e limiar de abstenção foram ajustados no `calib` e aplicados no `dev`. Antes conferi que o ambiente reproduz o E1 e o A1 originais. `log` e `brier` rodaram com as sementes 0, 1 e 2; `acerto` só com a semente 0 (18 e 19/11).
 
 | Braço | Grupo (Felhen) | Acc | NLL | ECE | $T$ | Cobertura |
 |---|---|---:|---:|---:|---:|---:|
@@ -27,7 +25,7 @@ Na semente 0 o Brier parecia ter ECE menor nas reservadas, mas com 3 sementes e 
 
 Sem plano separado; a previsão, escrita antes, era que `acerto` deixasse o Lumi superconfiante e que `log` e `brier` mantivessem probabilidades honestas, comparando cada braço com o `log` por IC 95% de bootstrap (empate quando o IC inclui zero).
 
-Limites: `acerto` tem uma semente só, e usamos o mesmo `lr` para todas as perdas, embora o gradiente do Brier seja menor.
+Limites: `acerto` tem uma semente só, e usei o mesmo `lr` para todas as perdas, embora o gradiente do Brier seja menor.
 
 ---
 
@@ -35,7 +33,7 @@ Limites: `acerto` tem uma semente só, e usamos o mesmo `lr` para todas as perda
 
 Treinar o "não sei" como ação de RL manteve a crença honesta, mas não ganhou da regra simples de abster pela confiança: na mesma cobertura, erra igual ou mais. O sinal de "falta informação" que parecia aparecer era confundido. O modelo abstém em casos com algum problema, não quando falta documento.
 
-Adicionamos uma opção "Não sei / passar para um humano" e uma perda em três partes: crença (log score nas opções normais), decisão (REINFORCE com +1 / −λ / 0, mexendo só no logit do "não sei") e uma coleira de KL para o Lumi sem adaptador. Rodamos λ = 3 e λ = 9 na semente 0 e depois λ = 3 nas sementes 1 e 2 para checar o sinal secundário (19 e 20/11).
+Adicionei uma opção "Não sei / passar para um humano" e uma perda em três partes: crença (log score nas opções normais), decisão (REINFORCE com +1 / −λ / 0, mexendo só no logit do "não sei") e uma coleira de KL para o Lumi sem adaptador. Rodei λ = 3 e λ = 9 na semente 0 e depois λ = 3 nas sementes 1 e 2 para checar o sinal secundário (19 e 20/11).
 
 | Fonte | Grupo | Cobertura | Risco (e) | Risco `h4_log` | Δ [IC 95%] |
 |---|---|---:|---:|---:|---|
@@ -56,7 +54,7 @@ Limites: a hipótese principal só tem a semente 0 (o plano mandava replicar só
 
 Sem ver o gabarito, recompensar o acerto deixa o Lumi tão superconfiante quanto com gabarito. Com recompensa própria (1/π) ele mantém a acurácia e chega perto da calibração supervisionada, mas sobra um custo pequeno e real no Felhen reservado.
 
-O Lumi sorteia G respostas por caso e só sabe se cada uma acertou. Comparamos `bandit_acerto` (recompensa 1 se acertou) e `bandit_log` (1/π(a) se acertou, com corte) com o `h4_log`. Depois variamos o corte (10, 30, 1000), os sorteios (G = 8 e 32), as épocas (2) e a exploração (eps = 0,2), tudo em 20/11.
+O Lumi sorteia G respostas por caso e só sabe se cada uma acertou. Comparei `bandit_acerto` (recompensa 1 se acertou) e `bandit_log` (1/π(a) se acertou, com corte) com o `h4_log`. Depois variei o corte (10, 30, 1000), os sorteios (G = 8 e 32), as épocas (2) e a exploração (eps = 0,2), tudo em 20/11.
 
 | Braço | Sementes | ECE Felhen res. | ECE Telepatia res. |
 |---|---|---:|---:|
@@ -80,7 +78,7 @@ Limites: G = 8, os cortes e a exploração têm só a semente 0, e o bandit usou
 
 Na Telepatia a temperatura estava errada, e 25 exemplos da família nova consertam a ECE. Mas o "não sei" errado não é problema de calibração. Mesmo com ajuste perfeito, para errar no máximo 10% o Lumi só pode responder 12% dos casos no Felhen e 2% na Telepatia. Falta saber a matéria.
 
-Sem treino, só CPU: com as predições do `h4_log` (sementes 0, 1 e 2), cada família reservada ganhou k exemplos com gabarito (k = 10, 25, 50; 100 sorteios por k) para reajustar a temperatura e o limiar só para ela. Comparamos com o ajuste global de hoje e com um oráculo que ajusta na família toda (`scripts/h7_poucos_rotulos.py`, 20/11).
+Sem treino, só CPU: com as predições do `h4_log` (sementes 0, 1 e 2), cada família reservada ganhou k exemplos com gabarito (k = 10, 25, 50; 100 sorteios por k) para reajustar a temperatura e o limiar só para ela. Comparei com o ajuste global de hoje e com um oráculo que ajusta na família toda (`scripts/h7_poucos_rotulos.py`, 20/11).
 
 | Fonte | Método | k | ECE | Cobertura | Risco |
 |---|---|---:|---:|---:|---:|
@@ -104,7 +102,7 @@ Limites: as reservadas não têm `calib`, então os k exemplos saíram do própr
 
 Não ensinam: a acurácia empata. Mas calibram. Na Telepatia a ECE cai de 0,104 para 0,029 sem nenhum ajuste de temperatura.
 
-Sem treino, com o adaptador `h4_log` (semente 0), colocamos antes da pergunta K = 0, 3 ou 8 casos já respondidos da mesma família (`--exemplos-contexto K`) e medimos nas reservadas do `dev` (`scripts/analise_h8.py`, 20/11).
+Sem treino, com o adaptador `h4_log` (semente 0), coloquei antes da pergunta K = 0, 3 ou 8 casos já respondidos da mesma família (`--exemplos-contexto K`) e medi nas reservadas do `dev` (`scripts/analise_h8.py`, 20/11).
 
 | Fonte | Acc K = 0 | Acc K = 3 | Acc K = 8 | ECE K = 0 | ECE K = 3 | ECE K = 8 |
 |---|---:|---:|---:|---:|---:|---:|
@@ -123,7 +121,7 @@ Limites: uma semente, e no Felhen os textos longos fizeram caber em média só 6
 
 Ensina. É o primeiro resultado do projeto que aumenta a acurácia na matéria nova, e com k = 100 isso se repete nas duas fontes e nas 3 sementes. Ficam dois custos pequenos: o Felhen novo sai confiante demais e há um esquecimento leve nas vistas da Telepatia.
 
-Partindo do `h4_log`, continuamos a LoRA por 3 épocas só com k = 25 ou 100 grupos rotulados de `juristcu_area`, `factck_veracidade` e `invoice_processing`, com a perda log. Os grupos de treino saem da avaliação. k = 100 rodou nas sementes 0, 1 e 2; k = 25 só na 0 (21/11, `scripts/analise_h9.py`).
+Partindo do `h4_log`, continuei a LoRA por 3 épocas só com k = 25 ou 100 grupos rotulados de `juristcu_area`, `factck_veracidade` e `invoice_processing`, com a perda log. Os grupos de treino saem da avaliação. k = 100 rodou nas sementes 0, 1 e 2; k = 25 só na 0 (21/11, `scripts/analise_h9.py`).
 
 | Fonte (k = 100, média de 3 sementes) | Acc reservadas | Cobertura do oráculo com 10% de risco | ECE reservadas |
 |---|---:|---:|---:|
@@ -153,7 +151,7 @@ Dois braços com k = 25, replay 1:1 e 3 épocas a partir do `h4_log`, semente 0:
 
 O único sinal a favor da dúvida é a NLL do Felhen, e na Telepatia ela vai para o lado contrário, então com uma semente não dá para dizer que ajuda. Na receita completa com 25 rótulos os dois respondem praticamente o mesmo tanto (Felhen 29% com erro 0,16 nos dois). Uma explicação possível é que a faixa de dúvida mistura casos úteis com casos ambíguos ou de rótulo ruim. Comparando com k = 100 e replay na mesma semente, 25 exemplos dão cerca de metade do ganho no Felhen (+6,5 contra +13,7) e cerca de 70% na Telepatia (+12,6 contra +17,7).
 
-Critério escrito antes de rodar: a dúvida ajudaria se o `h9ar_k25` tivesse acurácia nas reservadas acima do `h9r_k25` em pelo menos uma fonte (IC acima de zero) sem perder na outra; empate significaria que não compensa a avaliação extra do pool. Deu empate, e por isso não rodamos as sementes 1 e 2.
+Critério escrito antes de rodar: a dúvida ajudaria se o `h9ar_k25` tivesse acurácia nas reservadas acima do `h9r_k25` em pelo menos uma fonte (IC acima de zero) sem perder na outra; empate significaria que não compensa a avaliação extra do pool. Deu empate, e por isso não rodei as sementes 1 e 2.
 
 Limites: na Telepatia o pool é o próprio `dev`, então a seleção tira casos difíceis da avaliação (dos dois braços, o que mantém a comparação pareada).
 
@@ -163,7 +161,7 @@ Limites: na Telepatia o pool é o próprio `dev`, então a seleção tira casos 
 
 Devolve. A superconfiança do Felhen depois da H9 era só de escala, e uma temperatura resolve. Com 100 exemplos para treinar e 25 para calibrar, o Lumi responde 68% das faturas novas errando 10%, exatamente o alvo; antes respondia 7% e errava 18%.
 
-Só CPU (`scripts/h9_recalibrar.py`): aplicamos a receita da H7, temperatura e limiar da família com k grupos rotulados, ao `h4_log` e ao `h9_k100`, nas sementes 0, 1 e 2 com 100 sorteios. Os grupos de treino e de calibração ficam fora da medida (21/11).
+Só CPU (`scripts/h9_recalibrar.py`): apliquei a receita da H7, temperatura e limiar da família com k grupos rotulados, ao `h4_log` e ao `h9_k100`, nas sementes 0, 1 e 2 com 100 sorteios. Os grupos de treino e de calibração ficam fora da medida (21/11).
 
 | Fonte | Braço | ECE sem recalibrar | ECE com T da família (k = 25) | Responde | Erro |
 |---|---|---:|---:|---:|---:|
@@ -205,7 +203,7 @@ Limites: a mistura só tem a semente 0, com w escolhido no próprio `dev`, e as 
 
 ## H10: o Lumi aprende a matéria nova só com "acertou / errou"? (não rodada)
 
-Não rodamos. O desenho repetia a H6 em cima da receita da H9r, mas num passo só o RL apenas estima com ruído o gradiente que a perda log já dá exato, então no máximo empataria com o `h9r_k100`. Trocamos pelo piloto da H11, em que o Lumi raciocina antes de decidir.
+Não rodei. O desenho repetia a H6 em cima da receita da H9r, mas num passo só o RL apenas estima com ruído o gradiente que a perda log já dá exato, então no máximo empataria com o `h9r_k100`. Troquei pelo piloto da H11, em que o Lumi raciocina antes de decidir.
 
 O plano era treinar dois braços iguais ao `h9r_k100` da semente 0 (k = 100, replay 1:1, 3 épocas a partir do `h4_log`), mudando só a perda: `h10_bandit_k100` com `bandit_log` (G = 32, corte 1000) e `h10_acerto_k100` com `bandit_acerto`. Não precisava de código novo.
 
@@ -217,7 +215,7 @@ Critério escrito antes de rodar: H10a, o `h10_bandit_k100` subiria a acurácia 
 
 O Lumi raciocina (81% dos raciocínios fecham o `</think>`, 3,9 s cada), mas pelo critério ainda não valia montar o GRPO: a acurácia cai nas vistas da Telepatia e só 65% dos raciocínios sorteados terminam em 512 tokens. O achado principal é que, depois de raciocinar, ele fica superconfiante. Em 24/11/2026 a trilha do raciocínio foi encerrada.
 
-Testamos o adaptador `h4_log` no `dev`, com 8 casos por família (88 no total), de dois jeitos: raciocínio guloso de até 512 tokens e 4 raciocínios sorteados por caso (temperatura 1,0, top_p 0,95), como um grupo do GRPO. A letra é lida depois de `</think>\n\n` e comparada com a leitura de sempre, sem raciocínio (`scripts/h11_piloto.py`).
+Testei o adaptador `h4_log` no `dev`, com 8 casos por família (88 no total), de dois jeitos: raciocínio guloso de até 512 tokens e 4 raciocínios sorteados por caso (temperatura 1,0, top_p 0,95), como um grupo do GRPO. A letra é lida depois de `</think>\n\n` e comparada com a leitura de sempre, sem raciocínio (`scripts/h11_piloto.py`).
 
 | Recorte (guloso) | Acurácia sem → com | NLL sem → com | Não fechou |
 |---|---|---|---:|
@@ -236,7 +234,7 @@ Limites: são só 88 casos com uma semente de sorteio, e o `h4_log` foi treinado
 
 Ele escreve o número, mas quase sempre "100", e o número não separa bem acertos de erros (AUROC 0,639). A confiança escrita teria de ser aprendida.
 
-Usamos os mesmos 88 casos e raciocínios. Depois da letra, um turno novo pergunta a probabilidade, de 0 a 100, de a resposta estar correta (relatório `analises/h11b.md`).
+Usei os mesmos 88 casos e raciocínios. Depois da letra, um turno novo pergunta a probabilidade, de 0 a 100, de a resposta estar correta (relatório `analises/h11b.md`).
 
 | Fonte de confiança | AUROC | ECE |
 |---|---:|---:|
@@ -257,7 +255,7 @@ Limites: com 32 erros, o AUROC tem erro de cerca de ±0,06, e a pergunta vem num
 
 Não vale trocar. A perda do Clef (entropia cruzada com label smoothing + Brier) acerta um pouco mais na Telepatia (+1 a +2 pontos), mas deixa a confiança menos honesta no Felhen, e a temperatura não conserta tudo. A receita final continua com a perda log.
 
-Treinamos a perda `log_brier` com ε = 0,1 e pesos 1 e 1 (o post do Clef não dá esses valores, então a escolha foi nossa), com todo o resto igual ao `h4_log`. Foram 3 sementes, comparadas no `dev` com `scripts/comparar_h4.py` e `scripts/resumo_calibracao.py`.
+Treinei a perda `log_brier` com ε = 0,1 e pesos 1 e 1 (o post do Clef não dá esses valores, então a escolha foi minha), com todo o resto igual ao `h4_log`. Foram 3 sementes, comparadas no `dev` com `scripts/comparar_h4.py` e `scripts/resumo_calibracao.py`.
 
 | Recorte | Acurácia `log` → `clef` | NLL `log` → `clef` | ECE após temperatura, `log` / `clef` |
 |---|---|---|---|
@@ -278,7 +276,7 @@ Limites: ε e pesos sem busca, posto 16 em vez de 256, só `dev`.
 
 O custo na calibração vem do label smoothing, e o ganho de acurácia na Telepatia vem do Brier. A `log_brier` sem smoothing fica com o ganho (+2,2 pontos nas reservadas da Telepatia, mais que os +1,8 da perda inteira) e quase sem custo, então é ela a versão da perda do Clef que valia levar para a receita final.
 
-Separamos as peças em dois braços novos, `suave` (só o smoothing, ε = 0,1) e `logbrier` (entropia cruzada + Brier), com o resto igual ao `h4_log`, 3 sementes, no `dev`.
+Separei as peças em dois braços novos, `suave` (só o smoothing, ε = 0,1) e `logbrier` (entropia cruzada + Brier), com o resto igual ao `h4_log`, 3 sementes, no `dev`.
 
 | Braço | T no Felhen | ECE Felhen reservadas (após T) | Acurácia Telepatia reservadas, contra `log` |
 |---|---:|---:|---:|
@@ -287,7 +285,7 @@ Separamos as peças em dois braços novos, `suave` (só o smoothing, ε = 0,1) e
 | `logbrier` | 1,05 | 0,053 | +2,2 |
 | `clef` | 0,83 | 0,101 | +1,8 |
 
-O `suave` repete o padrão do Clef: ECE pior nas vistas do Felhen (+0,049), temperatura abaixo de 1 e reservadas do Felhen piores depois dela. O `logbrier` não repete; depois da temperatura, fica igual à `log` ou melhor. Ainda não sabemos por que o Brier ajuda. Uma hipótese, não testada, é que o Brier é limitado (no máximo 2) e a perda log não, então exemplos muito errados puxam menos o treino. O ganho só aparece nas reservadas da Telepatia, que são uma família só; no Felhen a acurácia empata.
+O `suave` repete o padrão do Clef: ECE pior nas vistas do Felhen (+0,049), temperatura abaixo de 1 e reservadas do Felhen piores depois dela. O `logbrier` não repete; depois da temperatura, fica igual à `log` ou melhor. Ainda não sei por que o Brier ajuda. Uma hipótese, não testada, é que o Brier é limitado (no máximo 2) e a perda log não, então exemplos muito errados puxam menos o treino. O ganho só aparece nas reservadas da Telepatia, que são uma família só; no Felhen a acurácia empata.
 
 Critério escrito antes de rodar: o custo vem do smoothing se o `suave` repetir o padrão do `clef` nas vistas do Felhen e o `logbrier` não; o ganho fica com o braço que repetir +1 a +2 pontos com IC fora do zero. Se o `logbrier` tivesse o ganho sem o custo, o próximo passo seria testá-lo na receita.
 
@@ -299,7 +297,7 @@ Limites: só ε = 0,1 e peso 1 no Brier, sem busca, e só `dev`.
 
 Empate, e a receita continua com a perda log. O ganho de +2,2 pontos da `log_brier` na Telepatia nova (H12b) some depois da receita inteira: os dois braços respondem a mesma fração de casos, com o mesmo erro.
 
-O braço `h9rb_k100` roda a receita final completa com a `log_brier`: parte do `h4_logbrier`, faz o mesmo treino curto do `h9r_k100` (100 exemplos por família nova + replay, 3 épocas) e a mesma recalibração com 25 rótulos. Comparamos semente a semente, com 3 sementes.
+O braço `h9rb_k100` roda a receita final completa com a `log_brier`: parte do `h4_logbrier`, faz o mesmo treino curto do `h9r_k100` (100 exemplos por família nova + replay, 3 épocas) e a mesma recalibração com 25 rótulos. Comparei semente a semente, com 3 sementes.
 
 | Fonte | `log`: responde / erra | `log_brier`: responde / erra |
 |---|---|---|
@@ -318,7 +316,7 @@ Limites: só `dev`, e na Telepatia a matéria nova é uma família só.
 
 O `h4_log` é frágil a um prompt que nunca viu, e variar o texto do prompt no treino conserta boa parte disso. Com o prompt novo, o `h4_log` perde 3 a 5 pontos nas famílias vistas e muitas vezes deixa de querer responder com uma letra; o `h4_aug` recupera cerca de 2 pontos e quase sempre responde com letra. Na matéria nova, no prompt de sempre, o efeito depende da fonte: +3,9 pontos na Telepatia e −1,8 no Felhen.
 
-Escrevemos variantes em `src/lumi_decision/prompts.py`: a 0 é o prompt de sempre, as variantes 1 a 3 mudam títulos, frases, ordem dos blocos e formato das opções (na Telepatia, também a ordem das chaves do JSON), e a 4 fica só para a avaliação. O `h4_aug` é igual ao `h4_log`, mas a cada época cada exemplo recebe uma variante de 0 a 3. Foram 3 sementes.
+Escrevi variantes em `src/lumi_decision/prompts.py`: a 0 é o prompt de sempre, as variantes 1 a 3 mudam títulos, frases, ordem dos blocos e formato das opções (na Telepatia, também a ordem das chaves do JSON), e a 4 fica só para a avaliação. O `h4_aug` é igual ao `h4_log`, mas a cada época cada exemplo recebe uma variante de 0 a 3. Foram 3 sementes.
 
 | Recorte (acurácia, pontos) | `log`: nunca visto − de sempre | `aug − log`, de sempre | `aug − log`, nunca visto |
 |---|---:|---:|---:|
@@ -331,7 +329,7 @@ No prompt novo, o `h4_log` chega a ter até 75% dos casos do Felhen com menos da
 
 Critério escrito antes de rodar: medir quanto o `h4_log` perde no prompt novo e depois comparar `aug − log` nos dois prompts. Ganho só no prompt novo conta como robustez; reservadas melhores no prompt de sempre, sem piorar a calibração, contam como generalização.
 
-Limites: as variantes foram escritas por nós, em português, só 4 no treino, e tudo é no `dev`.
+Limites: as variantes foram escritas por mim, em português, só 4 no treino, e tudo é no `dev`.
 
 ---
 
@@ -339,7 +337,7 @@ Limites: as variantes foram escritas por nós, em português, só 4 no treino, e
 
 A receita não muda, porque o prompt variado custa no prompt de sempre. Mas apareceu um limite novo: a receita de hoje é frágil a um prompt que nunca viu. Nele, a Telepatia cai de 72% para 50% de faturas novas respondidas.
 
-O braço `h9ra_k100` usa o prompt variado nas duas etapas (parte do `h4_aug` e o treino curto também usa `--variar-prompt true`), com 3 sementes, contra o `h9r_k100`. Avaliamos no prompt de sempre (`dev`) e na variante 4 (`devvar`), recalibrando com 25 rótulos no próprio prompt avaliado.
+O braço `h9ra_k100` usa o prompt variado nas duas etapas (parte do `h4_aug` e o treino curto também usa `--variar-prompt true`), com 3 sementes, contra o `h9r_k100`. Avaliei no prompt de sempre (`dev`) e na variante 4 (`devvar`), recalibrando com 25 rótulos no próprio prompt avaliado.
 
 | Fonte | Prompt | Receita de hoje: responde / erra | Prompt variado: responde / erra |
 |---|---|---|---|
@@ -352,7 +350,7 @@ O treino curto não resolveu a fragilidade da H13: no prompt novo, em até 73% d
 
 Critério escrito antes de rodar: o prompt variado entraria se, no prompt de sempre, ficasse a no máximo 2 pontos de cobertura, 1 de erro e 1 de acurácia nas vistas, e se ganhasse no prompt nunca visto. Falhou na primeira parte, pois o limite era 2 pontos e a Telepatia perdeu 6.
 
-Limites: uma variante nunca vista só, escrita por nós, e a comparação semente a semente no prompt de sempre só saiu para a semente 0.
+Limites: uma variante nunca vista só, escrita por mim, e a comparação semente a semente no prompt de sempre só saiu para a semente 0.
 
 ---
 
@@ -360,7 +358,7 @@ Limites: uma variante nunca vista só, escrita por nós, e a comparação sement
 
 Sim, depois da receita final. Na matéria nova, quando ele diz "não sei", erraria 45% a 47% daqueles casos; quando responde, erra 10% a 16%. A confiança separa acerto de erro dentro da mesma família (AUROC 0,75 a 0,83), então o "não sei" não reflete só a dificuldade da matéria. Antes da receita, o AUROC era bem menor: 0,59 na Telepatia e 0,69 no Felhen.
 
-Usamos `scripts/analise_sabe.py`, sem GPU, sobre as predições do `h4_log` e da receita final (`h9r_k100`), com 3 sementes e a mesma recalibração da receita (25 rótulos, risco-alvo de 10%, 100 repetições). "Não sei" é confiança abaixo do limiar, e o erro dele é o que o modelo erraria se fosse forçado a responder.
+Usei `scripts/analise_sabe.py`, sem GPU, sobre as predições do `h4_log` e da receita final (`h9r_k100`), com 3 sementes e a mesma recalibração da receita (25 rótulos, risco-alvo de 10%, 100 repetições). "Não sei" é confiança abaixo do limiar, e o erro dele é o que o modelo erraria se fosse forçado a responder.
 
 | Fonte | Modelo | Responde | Erro quando responde | Erro quando diz "não sei" | AUROC dentro da família |
 |---|---|---:|---|---|---|
@@ -383,7 +381,7 @@ Limites: só 3 famílias reservadas, e o "não sei" aqui é a regra simples do l
 
 Na `factck_veracidade`, o Lumi não aprendeu nada: responde "falso" em 95% dos casos, e a acurácia (0,668) é a de chutar sempre a classe mais comum (0,667). Na `juristcu_area`, ele aprendeu de verdade.
 
-Rodamos `scripts/onde_erra.py` na receita final (`h9r_k100`), com 3 sementes, nas famílias reservadas sem os grupos do treino curto, olhando o acerto por classe e a confusão entre gabarito e resposta.
+Rodei `scripts/onde_erra.py` na receita final (`h9r_k100`), com 3 sementes, nas famílias reservadas sem os grupos do treino curto, olhando o acerto por classe e a confusão entre gabarito e resposta.
 
 | `factck_veracidade` | No gabarito | Nas respostas do Lumi | Acerto da classe |
 |---|---:|---:|---:|

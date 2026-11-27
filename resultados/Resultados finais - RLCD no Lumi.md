@@ -57,15 +57,15 @@ reage a "caso complicado", não a "falta informação". Com o limite na confian�
 
 A decisão é lida dos logits das letras numa passada só, então a perda log já dá o gradiente exato. O RL estima
 esse mesmo gradiente por amostragem e só acrescenta ruído; por isso empatou na H5 e na H6. RL só faz diferença
-quando há algo amostrado e não derivável no caminho, como um raciocínio em texto. Testamos isso nos pilotos
-H11 e H11b: com raciocínio ele acerta menos (0,636 contra 0,727) e fica confiante demais, então paramos essa
+quando há algo amostrado e não derivável no caminho, como um raciocínio em texto. Testei isso nos pilotos
+H11 e H11b: com raciocínio ele acerta menos (0,636 contra 0,727) e fica confiante demais, então parei essa
 trilha. O Lumi oficial pensando, sem adaptador, nunca foi medido.
 
 ## Comparação com o Clef
 
 O Clef (Cloudflare) também lê a decisão direto das opções e usa base congelada + LoRA. A perda deles não ganhou
-da nossa (H12 a H12c). A parte de dados (prompts variados) deixou o Lumi mais robusto, mas com custo (H13 e
-H13b). O RLCD deles (crédito parcial na escala e penalidade de referência) não tem fórmula publicada; a nossa
+da minha (H12 a H12c). A parte de dados (prompts variados) deixou o Lumi mais robusto, mas com custo (H13 e
+H13b). O RLCD deles (crédito parcial na escala e penalidade de referência) não tem fórmula publicada; a minha
 versão está sendo testada na H15.
 
 ## Limites
